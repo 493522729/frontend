@@ -1,0 +1,77 @@
+/**
+ * 基础样式补充
+ *
+ * UnoCSS 的 presetWind3 已经带了一份 preflight（相当于 Tailwind 的 reset），
+ * 所以这里【不重复写 reset】，只补它管不到的几件事：
+ * 全高布局、字体栈、数字等宽、暗色切换过渡。
+ */
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+html {
+  /* 切换明暗时给背景一个过渡，避免"闪一下白"（架构文档 3.4） */
+  transition: background-color var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+body {
+  margin: 0;
+  font-family: var(--lz-font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--lz-text-regular);
+  background-color: var(--lz-bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizelegibility;
+}
+
+/* 金额 / 日期 / 编号：等宽数字，表格右对齐时不会参差
+   这是财务表格"看着就专业"的隐藏关键 */
+.num,
+.money,
+.amount,
+.date-text,
+.code-text {
+  font-family: var(--lz-font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 键盘可见性：默认只在 :focus-visible 时显示焦点环，鼠标点击不显示 */
+:focus-visible {
+  outline: 2px solid var(--lz-primary-600);
+  outline-offset: 2px;
+}
+
+/* 跳转到主内容：键盘用户按 Tab 时第一个出现，屏幕阅读器用户可跳过导航 */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--lz-space-2);
+  z-index: var(--lz-z-toast);
+  padding: var(--lz-space-2) var(--lz-space-4);
+  color: var(--lz-primary-600);
+  background: var(--lz-bg-card);
+  border-radius: var(--lz-radius-md);
+  box-shadow: var(--lz-shadow-md);
+
+  &:focus {
+    top: var(--lz-space-2);
+  }
+}
+
+/* 仅供屏幕阅读器 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

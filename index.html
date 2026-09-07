@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="个人 / 家庭财务中台：记账、账户、预算、报表" />
+    <title>老赵财务管理系统</title>
+    <script>
+      /**
+       * 主题预置脚本 —— 必须在 Vue 挂载前同步执行
+       *
+       * 否则用户选了暗色模式，首屏会先渲染成浅色再跳成暗色，闪一下白。
+       * 这里的 key 与 src/constants/storage-keys.ts 的 THEME_KEY 必须保持一致。
+       */
+      ;(function () {
+        try {
+          var saved = localStorage.getItem('lz-finance:theme') // 'light' | 'dark' | 'auto'
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          if (saved === 'dark' || ((!saved || saved === 'auto') && prefersDark)) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {
+          /* localStorage 被禁用（隐私模式）时忽略，走默认浅色 */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

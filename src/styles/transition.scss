@@ -1,0 +1,79 @@
+/**
+ * 全局过渡动画
+ *
+ * 铁律（架构文档 4.1）：
+ * 1. 只动画 transform 和 opacity（GPU 加速），禁止动 width/height/top/left
+ * 2. 时长统一走 token —— 系统开了"减弱动效"时 token 会变成 1ms，自动全部关掉
+ * 3. 单页同时进行的动画不超过 2 个
+ */
+
+/* ── 路由切换：fade + 4px 位移，配合 NProgress ── */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition:
+    opacity var(--lz-duration-base) var(--lz-ease-standard),
+    transform var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* 离开的元素脱离文档流，否则新旧两个页面会同时占位把内容顶下去 */
+.fade-slide-leave-active {
+  position: absolute;
+  width: 100%;
+}
+
+/* ── 列表项进出（新增/删除交易行）── */
+.list-enter-active,
+.list-leave-active {
+  transition:
+    opacity var(--lz-duration-base) var(--lz-ease-standard),
+    transform var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+/* 删除时后续元素平滑上移，而不是瞬间跳位 */
+.list-leave-active {
+  position: absolute;
+  width: 100%;
+}
+
+.list-move {
+  transition: transform var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+/* ── 折叠展开（筛选区、侧边栏子菜单）── */
+.collapse-enter-active,
+.collapse-leave-active {
+  overflow: hidden;
+  transition: height var(--lz-duration-slow) var(--lz-ease-standard);
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  height: 0;
+}
+
+/* ── 淡入淡出（遮罩、tooltip）── */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

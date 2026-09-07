@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+
+    /* 构建脚本跑在 Node 里，用 ESNext 即可 —— Vite 8 要求的 Node 版本远高于此 */
+    "target": "ESNext",
+    "lib": ["ESNext"],
+
+    "moduleDetection": "force",
+    /* Bundler mode */
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+
+    /* Linting */
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0"
+  },
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "uno.config.ts",
+    "eslint.config.js",
+    "build/**/*.ts"
+  ]
+}

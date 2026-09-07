@@ -1,0 +1,16 @@
+minimumReleaseAgeExcludePrune: true
+minimumReleaseAgeExclude:
+  - vxe-pc-ui@4.18.1
+
+trustPolicy: no-downgrade
+shellEmulator: true
+
+packages:
+  - .
+
+overrides:
+  semver: ^7.6.3
+
+allowBuilds:
+  '@parcel/watcher': true
+  simple-git-hooks: true

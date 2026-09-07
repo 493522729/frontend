@@ -1,0 +1,15 @@
+{
+  "typescript.tsdk": "node_modules/typescript/lib",
+  // 保存时跑 ESLint 的自动修复（perfectionist 排序、未用 import 删除等）
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always"
+  },
+  // 让 ESLint 接管这些语言的诊断；Vue 文件必须显式声明，否则 .vue 不进 lint
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact",
+    "vue"
+  ]
+}

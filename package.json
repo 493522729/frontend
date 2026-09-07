@@ -1,0 +1,79 @@
+{
+  "name": "laozhao-finance-frontend",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "build:report": "VITE_REPORT=true vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --build --force",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "hooks:install": "simple-git-hooks",
+    "commit": "czg"
+  },
+  "dependencies": {
+    "@vueuse/core": "14.4.0",
+    "axios": "1.20.0",
+    "echarts": "6.1.0",
+    "naive-ui": "2.45.3",
+    "nprogress": "0.2.0",
+    "pinia": "4.0.3",
+    "pinia-plugin-persistedstate": "4.7.1",
+    "temporal-polyfill": "1.0.4",
+    "vue": "3.5.42",
+    "vue-echarts": "8.2.0",
+    "vue-i18n": "11.4.10",
+    "vue-router": "5.3.1",
+    "vxe-pc-ui": "4.18.1",
+    "vxe-table": "4.21.5"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "9.5.1",
+    "@commitlint/cli": "^21.0.0",
+    "@commitlint/config-conventional": "^21.0.0",
+    "@iconify/vue": "5.0.1",
+    "@types/node": "^24.13.3",
+    "@types/nprogress": "^0.2.3",
+    "@unocss/eslint-plugin": "^66.10.0",
+    "@vitejs/plugin-vue": "6.0.8",
+    "@vitest/coverage-v8": "5.0.0",
+    "@vue/test-utils": "2.5.0",
+    "@vue/tsconfig": "^0.9.1",
+    "czg": "^1.11.0",
+    "eslint": "10.10.0",
+    "happy-dom": "20.14.0",
+    "lint-staged": "^16.2.7",
+    "rollup-plugin-visualizer": "^6.0.5",
+    "sass": "1.104.0",
+    "simple-git-hooks": "2.14.0",
+    "typescript": "6.0.3",
+    "unocss": "66.10.0",
+    "unplugin-auto-import": "21.1.0",
+    "unplugin-icons": "23.0.1",
+    "unplugin-vue-components": "32.1.0",
+    "vite": "8.2.2",
+    "vite-plugin-compression2": "^2.5.3",
+    "vite-plugin-vue-devtools": "^8.0.0",
+    "vitest": "5.0.0",
+    "vue-tsc": "3.3.11"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged",
+    "commit-msg": "pnpm commitlint --edit $1"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,vue,js,mjs,cjs,json,jsonc,md,yml,yaml,html,css,scss}": [
+      "eslint --fix"
+    ]
+  }
+}

@@ -1,0 +1,420 @@
+<script setup lang="ts">
+/**
+ * 左侧品牌面板
+ * ====================================================================
+ * 视觉布局：
+ *   ┌─ 顶部 ─┐
+ *   │ Logo + 名字 │
+ *   ├─ 中间 ─┤
+ *   │ 大字标题（3 列断行 + 渐变色）│
+ *   │ 副标题       │
+ *   │           │
+ *   │ 4 特性（2×2 grid）       │
+ *   ├─ 底部 ─┤
+ *   │ 版权 + 小字 │
+ *   └─────┘
+ *
+ * 视觉细节：
+ *   - 整块用彩色径向渐变 + 装饰几何（左下/右上浮动 SVG）
+ *   - 暗色模式自动加深
+ *   - 装饰「光斑」用 float 动画（架构文档 4.2）
+ */
+import { useAppStore } from '@/stores/modules/app'
+
+const app = useAppStore()
+
+interface Feature {
+  icon: string // SVG innerHTML path
+  title: string
+  desc: string
+}
+
+const features: Feature[] = [
+  {
+    icon: 'M3 12h4l3-9 4 18 3-9h4',
+    title: '实时同步',
+    desc: '多端数据秒级一致',
+  },
+  {
+    icon: 'M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4',
+    title: '智能分类',
+    desc: '自动识别收支流向',
+  },
+  {
+    icon: 'M9 17V4l11 13H9',
+    title: '多端协同',
+    desc: '桌面 + 移动无缝',
+  },
+  {
+    icon: 'M12 1l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z',
+    title: '安全保障',
+    desc: '端到端加密 + 审计',
+  },
+]
+</script>
+
+<template>
+  <aside class="brand-panel" :class="{ 'is-dark': app.isDark }">
+    <!-- 装饰：径向光斑 + 流动 SVG -->
+    <div class="bg-glow bg-glow--1" aria-hidden="true" />
+    <div class="bg-glow bg-glow--2" aria-hidden="true" />
+
+    <!-- 网格底纹 -->
+    <svg class="bg-grid" viewBox="0 0 400 800" aria-hidden="true">
+      <defs>
+        <pattern id="grid-pattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.08" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+    </svg>
+
+    <!-- 浮动几何：左下大圆 + 右上矩形 -->
+    <svg class="float-shape shape-circle" viewBox="0 0 200 200" aria-hidden="true">
+      <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1" fill="none" opacity="0.12" />
+      <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1" fill="none" opacity="0.2" />
+    </svg>
+    <svg class="float-shape shape-square" viewBox="0 0 200 200" aria-hidden="true">
+      <rect x="40" y="40" width="120" height="120" rx="12" stroke="currentColor" stroke-width="1" fill="none" opacity="0.12" transform="rotate(15 100 100)" />
+    </svg>
+
+    <header class="brand-head">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32">
+          <defs>
+            <linearGradient id="brand-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#5288ff" />
+              <stop offset="1" stop-color="#7d5fff" />
+            </linearGradient>
+          </defs>
+          <!-- 圆角底板 -->
+          <rect x="3" y="3" width="26" height="26" rx="8" fill="url(#brand-grad)" />
+          <!-- 抽象账簿/折线：财务管理意象 -->
+          <path d="M9 21h14" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" />
+          <path d="M9 16h10" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round" />
+          <path d="M9 11h6" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" />
+          <circle cx="22" cy="12" r="2.5" fill="#fff" />
+        </svg>
+      </div>
+      <span class="brand-name">老赵财务中台</span>
+    </header>
+
+    <section class="brand-hero">
+      <h1 class="hero-title">
+        <span class="line line-1">让每一笔钱</span>
+        <span class="line line-2">
+          都有迹<em>可循</em>
+        </span>
+      </h1>
+      <p class="hero-subtitle">
+        个人 / 家庭 / 小微团队的智能财务管理后台<br>
+        一键记账 · 多维报表 · 实时同步
+      </p>
+    </section>
+
+    <!-- 4 特性 -->
+    <section class="brand-features" aria-label="产品特性">
+      <article v-for="f in features" :key="f.title" class="feat">
+        <div class="feat-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path :d="f.icon" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="feat-text">
+          <h3 class="feat-title">
+            {{ f.title }}
+          </h3>
+          <p class="feat-desc">
+            {{ f.desc }}
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <footer class="brand-foot">
+      <p class="version">
+        v0.1.0 · 练手项目
+      </p>
+      <p class="copyright">
+        © 2026 LaoZhao · Built with WorkBuddy
+      </p>
+    </footer>
+  </aside>
+</template>
+
+<style scoped lang="scss">
+.brand-panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  padding: 64px 56px;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at top left, rgba(168, 216, 255, 0.45), transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(197, 182, 255, 0.4), transparent 50%),
+    linear-gradient(135deg, #eef5ff 0%, #e8ecff 100%);
+  color: #34466b;
+  overflow: hidden;
+  isolation: isolate;
+
+  &.is-dark {
+    background:
+      radial-gradient(ellipse at top left, rgba(82, 136, 255, 0.35), transparent 50%),
+      radial-gradient(ellipse at bottom right, rgba(150, 110, 235, 0.3), transparent 50%),
+      linear-gradient(135deg, #0a1428 0%, #1a1633 100%);
+    color: #d9e2f3;
+  }
+}
+
+/* 光斑：float 制造缓慢漂浮 */
+.bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: 0;
+
+  &--1 {
+    top: -120px;
+    left: -100px;
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(82, 168, 255, 0.5), transparent 60%);
+    animation: float 9s ease-in-out infinite;
+  }
+
+  &--2 {
+    bottom: -160px;
+    right: -80px;
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(circle, rgba(197, 182, 255, 0.5), transparent 60%);
+    animation: float 11s ease-in-out infinite reverse;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -30px) scale(1.05); }
+}
+
+/* 网格底纹 */
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: #5288ff;
+  z-index: 0;
+  :global(.dark) & { color: #8e9fd9; }
+}
+
+/* 浮动几何 */
+.float-shape {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  color: #82a4dd;
+
+  :global(.dark) & { color: #5e6a8c; }
+}
+
+.shape-circle {
+  bottom: -80px;
+  left: -60px;
+  width: 240px;
+  height: 240px;
+  animation: spin 60s linear infinite;
+}
+
+.shape-square {
+  top: -40px;
+  right: -60px;
+  width: 200px;
+  height: 200px;
+  animation: spin 80s linear infinite reverse;
+}
+
+@keyframes spin {
+  to { transform: rotate(1turn); }
+}
+
+.brand-head {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 64px;
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.brand-name {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.92;
+}
+
+.brand-hero {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 48px;
+}
+
+.hero-title {
+  margin: 0 0 24px;
+  font-size: 60px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+
+  .line {
+    display: block;
+    background: linear-gradient(120deg, #205392 0%, #2a6bb4 40%, #5fa5de 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* 优先级必须高过 .line，才能覆盖透明填充 */
+  .line-2 em {
+    font-style: normal;
+    color: var(--lz-primary-700);
+    -webkit-text-fill-color: var(--lz-primary-700);
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+  }
+}
+
+.hero-subtitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  opacity: 0.78;
+  letter-spacing: 0.02em;
+  max-width: 480px;
+}
+
+.brand-features {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 28px;
+  margin-bottom: 64px;
+  max-width: 520px;
+}
+
+.feat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  transition: transform 250ms;
+}
+
+.feat:hover {
+  transform: translateX(4px);
+}
+
+.feat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(82, 136, 255, 0.15);
+  color: #5288ff;
+  flex-shrink: 0;
+  transition: all 250ms;
+
+  :global(.dark) & {
+    background: rgba(255, 255, 255, 0.04);
+    color: #8caaff;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.feat:hover .feat-icon {
+  background: linear-gradient(135deg, #5288ff, #7d5fff);
+  color: #fff;
+  transform: scale(1.06);
+  border-color: transparent;
+}
+
+.feat-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.feat-desc {
+  margin: 0;
+  font-size: 12.5px;
+  opacity: 0.65;
+  letter-spacing: 0.01em;
+}
+
+.brand-foot {
+  position: relative;
+  z-index: 2;
+  margin-top: auto;
+  font-size: 12px;
+  opacity: 0.6;
+  line-height: 1.7;
+
+  p {
+    margin: 0;
+  }
+}
+
+.version {
+  font-weight: 500;
+}
+
+@media (max-width: 992px) {
+  .brand-panel {
+    padding: 32px 28px 16px;
+    min-height: 280px;
+    height: auto;
+  }
+
+  .hero-title {
+    font-size: 36px;
+  }
+
+  .hero-subtitle {
+    font-size: 14px;
+  }
+
+  .brand-features {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+    margin-bottom: 32px;
+  }
+
+  .brand-head {
+    margin-bottom: 24px;
+  }
+}
+</style>

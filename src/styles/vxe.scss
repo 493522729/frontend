@@ -1,0 +1,26 @@
+/**
+ * vxe-table 主题对齐
+ *
+ * vxe-table 的明暗切换挂在 html[data-vxe-ui-theme] 上（由 _vxe-bootstrap.ts
+ * 里的 setTheme 同步），暗色变量集内置在它自己的 style.css。这里只做品牌色对齐：
+ * 内置主色是 Element 蓝 #409eff，与晨雾蓝体系不符。
+ *
+ * 优先级说明：本文件随 main.ts 全局注入，先于交易页懒加载的 style.css；
+ * 同优先级会被后者覆盖，所以暗色块用 html 前缀抬高一级，确保稳赢。
+ */
+
+/* 亮色：表格内主色（复选框 / 排序高亮 / 拖拽线）用正文级晨雾蓝 */
+:root {
+  --vxe-ui-font-primary-color: var(--lz-primary-600);
+  --vxe-ui-table-resizable-drag-line-color: var(--lz-primary-600);
+  --vxe-ui-table-cell-area-border-color: var(--lz-primary-600);
+}
+
+/* 暗色：主色降一档防爆光；行内编辑脏标记对齐语义色（内置为 Element 红绿） */
+html[data-vxe-ui-theme='dark'] {
+  --vxe-ui-font-primary-color: var(--lz-primary-400);
+  --vxe-ui-table-resizable-drag-line-color: var(--lz-primary-400);
+  --vxe-ui-table-cell-area-border-color: var(--lz-primary-400);
+  --vxe-ui-table-cell-dirty-update-color: var(--lz-danger);
+  --vxe-ui-table-cell-dirty-insert-color: var(--lz-success);
+}

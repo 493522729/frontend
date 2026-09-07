@@ -1,0 +1,86 @@
+/**
+ * 交易领域类型契约（前端单点真相）
+ * ====================================================================
+ * 整个前端任何地方提到「交易」，都引用这里的形状，避免到处硬编码字符串字段。
+ * 后端联调时若字段调整，只动这里。
+ *
+ * 字段枚举的字面量值来自 src/enums/，这里只定义「结构形状」；这样不会与单点真相源脱节。
+ */
+import type { AccountType } from '@/enums/account'
+import type { TransactionSource, TransactionType } from '@/enums/transaction'
+
+/** 单笔交易（前端视角） */
+export interface Transaction {
+  id: number
+  /** 所属账本 */
+  bookId: number
+  /** 类型 */
+  type: TransactionType
+  /** 金额（分，Long）—— 永不允许 double */
+  amount: number
+  /** 币种（v1 仅 CNY） */
+  currency: 'CNY'
+  /** 账户 ID */
+  accountId: number
+  /** 转账场景下的目标账户；非转账时为 null */
+  toAccountId: number | null
+  /** 分类 ID */
+  categoryId: number
+  /** 交易日期（YYYY-MM-DD） */
+  transDate: string
+  /** 备注 */
+  note: string
+  /** 来源 */
+  source: TransactionSource
+  /** 创建时间戳（ms） */
+  createdAt: number
+  /** 更新时间戳（ms） */
+  updatedAt: number
+}
+
+/** 交易列表查询参数 */
+export interface TransactionListParams {
+  bookId?: number
+  /** ISO 日期或 YYYY-MM-DD */
+  startDate?: string
+  endDate?: string
+  categoryIds?: number[]
+  accountIds?: number[]
+  types?: TransactionType[]
+  /** 模糊匹配备注 / 分类名 */
+  keyword?: string
+  /** 页码（1-based） */
+  page: number
+  /** 每页条数 */
+  pageSize: number
+}
+
+/** 交易列表响应 */
+export interface TransactionListResult {
+  list: Transaction[]
+  total: number
+}
+
+/** 账户（前端视角） */
+export interface Account {
+  id: number
+  bookId: number
+  name: string
+  type: AccountType
+  icon: string
+  /** 期初余额（分） */
+  initBalance: number
+  /** 信用额度（分），仅 credit 类型 */
+  creditLimit: number
+}
+
+/** 分类（前端视角） */
+export interface Category {
+  id: number
+  /** 'income' / 'expense'；转账不挂分类 */
+  type: 'income' | 'expense'
+  name: string
+  icon: string
+  color: string
+  parentId: number | null
+}

@@ -1,0 +1,35 @@
+/**
+ * 滚动条统一风格
+ *
+ * 后台页面滚动条很显眼，默认的系统滚动条又粗又黑，会打断视觉。
+ * 只在 WebKit 上做细条，Firefox 用 scrollbar-width/color（标准属性）。
+ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lz-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--lz-border);
+  border: 2px solid transparent;
+  border-radius: var(--lz-radius-full);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--lz-text-disabled);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

@@ -1,0 +1,116 @@
+// SCSS 变量与 mixin
+//
+// ⚠️ 这个文件会被 vite.config.ts 的 additionalData 注入到【每一个】SCSS 文件开头，
+// 所以这里【绝对不能写任何会输出 CSS 的规则】，否则每个组件都会重复输出一份。
+// 会输出 CSS 的东西（reset、EP 覆盖、过渡动画）请放到 index.scss 里统一引入。
+//
+// 颜色值在 tokens.css 里已经定义成 CSS 变量了，这里再抄一份 SCSS 变量，
+// 是为了在 SCSS 里做颜色运算（比如 color-mix、rgba 混合）时才不会拿到字符串。
+
+// ─── 主色 ──────────────────────────────────────────────────────
+$primary-50: #f2f7fc;
+$primary-100: #e3eef9;
+$primary-200: #c3ddf3;
+$primary-300: #94c4ea;
+$primary-400: #5fa5de;
+$primary-500: #3b87ce;
+$primary-600: #2a6bb4;
+$primary-700: #205392;
+$primary-800: #1b4376;
+$primary-900: #183863;
+
+// ─── 中性 ──────────────────────────────────────────────────────
+$text-primary: #1a2233;
+$text-regular: #3d4a5c;
+$text-secondary: #64748b;
+$text-disabled: #a8b3c4;
+$border: #e2e8f0;
+$border-light: #eef2f7;
+$bg-page: #f5f7fa;
+$bg-card: #ffffff;
+
+// ─── 语义 ──────────────────────────────────────────────────────
+$success: #15803d;
+$danger: #dc2626;
+$warning: #b45309;
+$info: #205392;
+
+// ─── 骨架尺寸（与 tokens.css 保持一致）──────────────────────────
+$sidebar-width: 240px;
+$sidebar-width-collapsed: 64px;
+$header-height: 56px;
+$tabs-height: 40px;
+$content-padding: 24px;
+
+// ─── 断点（与架构文档 3.5 一致，移动优先）────────────────────────
+$bp-xs: 320px;
+$bp-sm: 576px;
+$bp-md: 768px;
+$bp-lg: 992px;
+$bp-xl: 1200px;
+$bp-2xl: 1600px;
+
+// ─── Mixin ─────────────────────────────────────────────────────
+
+/// 焦点环：无障碍要求 —— 禁止 outline: none（架构文档 4.6）
+/// 只在键盘聚焦（:focus-visible）时出现，鼠标点击不显示
+@mixin focus-ring($offset: 2px) {
+  &:focus-visible {
+    outline: 2px solid var(--lz-primary-600);
+    outline-offset: $offset;
+  }
+}
+
+/// 单行省略
+@mixin ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/// 多行省略（需 -webkit-，现代浏览器均支持）
+@mixin ellipsis-lines($lines: 2) {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: $lines;
+}
+
+/// 数字等宽：金额 / 日期 / 编号必用（财务表格专业感的关键）
+@mixin tabular {
+  font-family: var(--lz-font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/// 细滚动条：后台表格区域常用，避免默认滚动条太粗打断视觉
+@mixin thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lz-border) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--lz-border);
+    border-radius: var(--lz-radius-full);
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/// 响应式：大于某断点（桌面优先的补充，主流程仍用 UnoCSS 的 md: lg:）
+@mixin from($bp) {
+  @media (width >= $bp) {
+    @content;
+  }
+}
+
+@mixin until($bp) {
+  @media (width < $bp) {
+    @content;
+  }
+}
