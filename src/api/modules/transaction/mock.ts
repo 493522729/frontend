@@ -199,6 +199,18 @@ export function mockListAccounts(): Account[] {
   return _accounts
 }
 
+/**
+ * 全量交易（只读快照）—— 给 stats 等「聚合型」mock 模块用
+ *
+ * 真实后端里这类聚合是服务端一次 SQL group by 就出来的，前端不该拉全量。
+ * mock 阶段没有服务端，就让下游模块直接读这份内存数据做聚合，
+ * 保持「调用方只拿聚合结果」的接口形状不变 —— 将来换真接口时调用方零改动。
+ */
+export function mockGetAllTransactions(): readonly Transaction[] {
+  generateTransactions()
+  return _transactions
+}
+
 export function mockListTransactions(params: TransactionListParams): TransactionListResult {
   generateTransactions()
   const { startDate, endDate, categoryIds, accountIds, types, keyword, page, pageSize } = params

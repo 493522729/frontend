@@ -13,6 +13,10 @@ import type {
   TransactionListResult,
 } from '@/types/transaction'
 import {
+  MOCK_LATENCY,
+  simulateLatency,
+} from '@/api/mock-latency'
+import {
   mockBatchDeleteTransactions,
   mockBatchUpdateCategory,
   mockCreateTransaction,
@@ -22,13 +26,6 @@ import {
   mockListTransactions,
   mockUpdateTransaction,
 } from './mock'
-
-const SIMULATED_LATENCY_MS = 80
-
-/** 模拟网络延迟：让 loading 状态、骨架屏有意义 */
-function simulateLatency<T>(value: T): Promise<T> {
-  return new Promise(resolve => setTimeout(resolve, SIMULATED_LATENCY_MS, value))
-}
 
 /** 分类字典（前端缓存） */
 export function listCategories(): Promise<Category[]> {
@@ -42,7 +39,7 @@ export function listAccounts(): Promise<Account[]> {
 
 /** 分页查交易 */
 export function listTransactions(params: TransactionListParams): Promise<TransactionListResult> {
-  return simulateLatency(mockListTransactions(params))
+  return simulateLatency(mockListTransactions(params), MOCK_LATENCY.list)
 }
 
 /** 单笔更新（行内编辑 / 行编辑） */
