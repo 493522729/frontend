@@ -101,6 +101,15 @@ export function useTransactionList() {
     await load()
   }
 
+  /**
+   * 外部入口（快速记账弹层等）新增数据后调用：
+   * 回到第 1 页重载 —— 新记录排在前面，停在原页码看不到它
+   */
+  async function reloadFromFirst() {
+    page.value = 1
+    await load()
+  }
+
   function onPageChange(p: number) {
     page.value = p
     load()
@@ -198,6 +207,7 @@ export function useTransactionList() {
     pageSize,
     selectedIds,
     reload,
+    reloadFromFirst,
     applyFilter,
     resetFilter,
     onPageChange,

@@ -19,6 +19,7 @@ import { NButton, NInput, NInputNumber, NSelect, NSpace, NTag, useMessage } from
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transaction'
 import { useDictStore } from '@/stores/modules/dict'
+import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { formatCents } from '@/utils/money'
 import { ensureVxeTable } from './_vxe-bootstrap'
 import FilterPanel from './components/FilterPanel.vue'
@@ -46,6 +47,7 @@ const {
   filter,
   selectedIds,
   reload,
+  reloadFromFirst,
   // FilterPanel 只 emit 意图，真正的筛选状态改动走 composable 这两个方法
   applyFilter,
   resetFilter,
@@ -54,6 +56,10 @@ const {
   removeBatch,
   batchSetCategory,
 } = useTransactionList()
+
+// 快速记账弹层的写操作（新增 / 撤销）完成后刷新列表：回第 1 页，保证所见即所得
+const quickEntry = useQuickEntryStore()
+watch(() => quickEntry.dataChangedAt, () => reloadFromFirst())
 
 const categoryOptions = computed(() => dict.categories.map(c => ({ label: c.name, value: c.id })))
 const batchCategoryId = ref<number | null>(null)

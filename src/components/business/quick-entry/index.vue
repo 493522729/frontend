@@ -14,10 +14,10 @@ import { formatDate, today } from '@/utils/temporal'
 /**
  * 快速记账弹层 —— 全局「30 秒记一笔」入口（PRD US-001 / 8.3）
  * ====================================================================
- * 交互约定（与 PRD 8.3 对齐）：
+ * 交互约定：
  *   - 金额自动聚焦，大字 + ¥ 前缀，inputmode=decimal 唤数字键盘
- *   - Enter        → 保存并清空金额/备注，弹层不关（连续记账）
- *   - ⌘/Ctrl+Enter → 保存并关闭弹层
+ *   - Enter        → 保存并关闭弹层（最常用，符合表单直觉）
+ *   - Shift+Enter  → 保存并继续（连续记账）
  *   - Esc          → 关闭（n-modal close-on-esc）
  *   - 类型切换时分类联动过滤；转账时隐藏分类、展开「转入账户」
  *
@@ -65,6 +65,31 @@ const previewText = computed(() => {
   if (!Number.isFinite(cents) || cents === 0)
     return ''
   return formatCents(cents, { withSymbol: true })
+})
+
+// ── 金额输入做限制：只保留数字 + 单个小数点，最多 2 位小数 ─
+function sanitizeAmount(text: string): string {
+  // 1. 先删掉除数字和小数点以外的字符
+  let s = text.replace(/[^0-9.]/g, '')
+  // 2. 只保留第一个小数点
+  const parts = s.split('.')
+  if (parts.length > 2)
+    s = `${parts[0]}.${parts.slice(1).join('')}`
+  // 3. 小数点后最多两位
+  if (s.includes('.')) {
+    const [intPart, decPart] = s.split('.')
+    s = `${intPart}.${(decPart ?? '').slice(0, 2)}`
+  }
+  // 4. 去掉无意义的前导零（保留 0 本身）
+  s = s.replace(/^0+(?=\d)/, '')
+  return s
+}
+
+// ── 金额输入实时过滤 ─────────────────────────────────
+watch(() => form.amountText, (val) => {
+  const sanitized = sanitizeAmount(val)
+  if (sanitized !== val)
+    form.amountText = sanitized
 })
 
 // ── 打开弹层：加载字典 + 回填默认值 + 聚焦金额 ─────────
@@ -136,7 +161,7 @@ function buildInput(): Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> {
 /** 保存成功提示 + 撤销（10s 内可撤回，PRD 9.2 操作可撤销）
  *  message 无 action 能力，改用 notification 挂撤销按钮 */
 function showSavedToast(tx: Transaction) {
-  notification.success({
+  const notice = notification.success({
     title: '已记录',
     content: formatCents(tx.amount, { withSymbol: true }),
     duration: 10_000,
@@ -145,7 +170,12 @@ function showSavedToast(tx: Transaction) {
       quaternary: true,
       onClick: async () => {
         await deleteTransaction(tx.id)
+        // 撤销完成后立即关闭通知：既防重复点击（二次删除已不存在的记录），
+        // 也避免「已记录」的提示在记录已被撤走后还挂在屏幕上误导人
+        notice.destroy()
         notification.info({ title: '已撤销该笔记录' })
+        // 广播变更信号：列表把这笔移除
+        quickEntry.notifyDataChanged()
       },
     }, { default: () => '撤销' }),
   })
@@ -166,42 +196,52 @@ async function submit(closeAfter: boolean) {
 
     // 记忆本次选择，作为下次默认值
     quickEntry.remember(form.categoryId, form.accountId)
+    // 广播「数据已变更」信号：交易列表等页面 watch 它刷新数据
+    quickEntry.notifyDataChanged()
     showSavedToast(created)
 
-    // 清空金额/备注、保留类型/分类/账户，聚焦金额准备下一笔（PRD 8.3 连续记账）
+    // 清空金额/备注、保留类型/分类/账户，聚焦金额准备下一笔
     form.amountText = ''
     form.note = ''
-    if (closeAfter)
+    if (closeAfter) {
       quickEntry.close()
-    else
+    }
+    else {
       nextTick(() => amountInputRef.value?.focus())
+    }
   }
   finally {
     submitting.value = false
   }
 }
 
-/** 键盘：Enter 保存清空、⌘/Ctrl+Enter 保存并关闭；焦点在 select/日期面板时不拦截 */
+/** 键盘：Enter 保存关闭、Shift+Enter 保存继续；焦点在 select/日期面板时不拦截 */
 function onKeydown(e: KeyboardEvent) {
+  if (!quickEntry.visible)
+    return
   if (e.key !== 'Enter')
     return
   const target = e.target as HTMLElement | null
   if (target?.closest('.n-base-selection') || target?.closest('.n-date-panel'))
     return
   e.preventDefault()
-  submit(e.metaKey || e.ctrlKey)
+  submit(!e.shiftKey)
 }
+
+useEventListener(document, 'keydown', onKeydown)
 </script>
 
 <template>
+  <!-- 宽度用内联 style：NModal 会把 class/style 透传到 Teleport 里的卡片元素，
+       该元素不带本组件的 scoped 属性，scoped 样式选择器永远匹配不到（曾导致弹层全屏宽） -->
   <NModal
     v-model:show="quickEntry.visible"
     preset="card"
     class="quick-entry-modal"
+    style="width: min(480px, 92vw)"
     title="记一笔"
     :mask-closable="false"
     :close-on-esc="true"
-    @keydown="onKeydown"
   >
     <div class="quick-entry">
       <!-- 类型：支出 / 收入 / 转账 -->
@@ -236,7 +276,7 @@ function onKeydown(e: KeyboardEvent) {
 
       <!-- 分类 / 账户 -->
       <div class="field-grid">
-        <div v-if="form.type !== 'transfer'" class="field">
+        <div v-if="form.type !== 'transfer'" class="field field-category">
           <label class="field-label">分类</label>
           <NSelect
             v-model:value="form.categoryId"
@@ -246,7 +286,7 @@ function onKeydown(e: KeyboardEvent) {
             clearable
           />
         </div>
-        <div class="field">
+        <div class="field field-account">
           <label class="field-label">{{ form.type === 'transfer' ? '转出账户' : '账户' }}</label>
           <NSelect
             v-model:value="form.accountId"
@@ -254,7 +294,7 @@ function onKeydown(e: KeyboardEvent) {
             placeholder="选择账户"
           />
         </div>
-        <div v-if="form.type === 'transfer'" class="field">
+        <div v-if="form.type === 'transfer'" class="field field-transfer-to">
           <label class="field-label">转入账户</label>
           <NSelect
             v-model:value="form.toAccountId"
@@ -282,7 +322,6 @@ function onKeydown(e: KeyboardEvent) {
             v-model:value="form.note"
             placeholder="可选，写点备注"
             :input-props="{ maxlength: 100 }"
-            @keydown.enter.prevent="submit(false)"
           />
         </div>
       </div>
@@ -290,10 +329,15 @@ function onKeydown(e: KeyboardEvent) {
 
     <template #footer>
       <div class="footer">
-        <span class="footer-hint">Enter 保存 · ⌘Enter 保存并关闭 · Esc 关闭</span>
-        <NButton type="primary" :loading="submitting" @click="submit(true)">
-          保存
-        </NButton>
+        <span class="footer-hint">Enter 保存 · Shift+Enter 继续 · Esc 关闭</span>
+        <div class="footer-actions">
+          <NButton size="small" quaternary :disabled="submitting" @click="submit(false)">
+            保存并继续
+          </NButton>
+          <NButton type="primary" :loading="submitting" @click="submit(true)">
+            保存
+          </NButton>
+        </div>
       </div>
     </template>
   </NModal>
@@ -303,80 +347,126 @@ function onKeydown(e: KeyboardEvent) {
 .quick-entry {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  width: 460px;
-  max-width: 100%;
+  gap: 20px;
+  padding: 4px 2px;
 }
 
+// ── 类型切换：分段按钮，选中态更突出 ──────────────────
 .type-group {
   display: flex;
   gap: 8px;
+  padding: 4px;
+  background: var(--lz-bg-page);
+  border: 1px solid var(--lz-border);
+  border-radius: var(--lz-radius-xl);
+
+  :deep(.n-radio-button) {
+    flex: 1;
+    border: none;
+    border-radius: var(--lz-radius-lg);
+    background: transparent;
+    color: var(--lz-text-regular);
+    transition: all 200ms var(--lz-ease-standard);
+
+    &.n-radio-button--checked {
+      background: var(--lz-primary-600);
+      color: var(--lz-text-primary);
+      box-shadow: var(--lz-shadow-sm);
+    }
+  }
+
+  // Naive 把按钮边框 / focus ring 全画在 __state-border 装饰层的 box-shadow 上
+  // （.n-radio-button:focus:not(:active) .n-radio-button__state-border），
+  // 写 border:none 无效 —— 选中态是自绘的，这层装饰直接整体隐藏
+  :deep(.n-radio-button__state-border),
+  :deep(.n-radio-button__border) {
+    display: none !important;
+  }
+
+  // 按钮间的分隔竖线是真实 DOM 元素（.n-radio-group__splitor），不是伪元素
+  :deep(.n-radio-group__splitor) {
+    display: none;
+  }
+
+  :deep(.n-radio-button__label) {
+    width: 100%;
+    display: block;
+    padding: 8px 0;
+    font-weight: 500;
+    font-size: 13px;
+  }
 }
 
-.type-btn {
-  flex: 1;
-  text-align: center;
-}
-
-// ── 金额：大字聚焦是快速记账的核心视觉重心 ──────────────
+// ── 金额：更强的视觉重心和聚焦反馈 ──────────────────
 .amount-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .amount-input-wrap {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 16px 18px;
   background: var(--lz-bg-page);
-  border: 1px solid var(--lz-border);
-  border-radius: 10px;
-  transition: border-color 200ms;
+  border: 2px solid var(--lz-border);
+  border-radius: var(--lz-radius-xl);
+  transition: all 200ms var(--lz-ease-standard);
 
   &:focus-within {
     border-color: var(--lz-primary-600);
     box-shadow: 0 0 0 3px var(--lz-primary-100);
+    background: var(--lz-bg-card);
   }
 }
 
 .amount-symbol {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--lz-text-secondary);
 }
 
-// 覆盖 n-input 默认样式，放大金额字号（架构文档 8.2：金额右对齐、tabular-nums）
 .amount-input {
   flex: 1;
 
+  // Naive 的垂直居中全部由 --n-height 推导：input-el 的 height/line-height、
+  // placeholder 的 padding 都从它计算。该变量以内联 style 注入在根元素上，
+  // 样式表覆盖必须 !important。设 48px 后高度/行高/垂直 padding 联动，
+  // 28px 大字的光标垂直居中且不顶满（caret ≈ 33px，上下各余 ~7px）
+  --n-height: 48px !important;
+
   :deep(.n-input__input-el) {
-    font-size: 34px;
+    font-size: 20px;
     font-weight: 600;
     color: var(--lz-text-primary);
     font-variant-numeric: tabular-nums;
     text-align: left;
     padding: 0;
+    background: transparent;
   }
 
+  // Naive 的边框实际画在 state-border 的 box-shadow 上，
+  // 只写 border:none 删不掉 —— 聚焦时内层会残留一圈蓝框
   :deep(.n-input__border),
   :deep(.n-input__state-border) {
     border: none;
+    box-shadow: none;
   }
 }
 
 .amount-preview {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--lz-text-secondary);
   padding-left: 4px;
   font-variant-numeric: tabular-nums;
 }
 
+// ── 字段网格：加大间距和标签可读性 ──────────────────
 .field-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
 .field {
@@ -387,21 +477,32 @@ function onKeydown(e: KeyboardEvent) {
 
 .field-label {
   font-size: 12px;
-  color: var(--lz-text-secondary);
+  font-weight: 500;
+  color: var(--lz-text-regular);
 }
 
 .date-picker {
   width: 100%;
 }
 
+// ── 底部操作：按钮和提示分两边，更清晰 ──────────────
 .footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  width: 100%;
 }
 
 .footer-hint {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--lz-text-secondary);
+  white-space: nowrap;
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

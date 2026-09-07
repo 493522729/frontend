@@ -25,6 +25,15 @@ export const useQuickEntryStore = defineStore('quickEntry', () => {
   /** 上次记账的账户 ID */
   const lastAccountId = ref<number | null>(null)
 
+  /**
+   * 最近一次记账数据变更（新增 / 撤销删除）的时间戳（0 = 本次会话还没变更过）
+   *
+   * 跨组件树的「数据已变更」信号：弹层挂在 layout 层，与业务页面
+   * 没有父子关系，写操作发生后各页面的列表刷新靠 watch 它触发。
+   * 会话内信号，不进持久化白名单（persist.pick）。
+   */
+  const dataChangedAt = ref(0)
+
   function open() {
     visible.value = true
   }
@@ -39,13 +48,20 @@ export const useQuickEntryStore = defineStore('quickEntry', () => {
     lastAccountId.value = accountId
   }
 
+  /** 记账数据发生写操作（新增 / 撤销删除）后调用：广播变更信号，订阅方据此刷新 */
+  function notifyDataChanged() {
+    dataChangedAt.value = Date.now()
+  }
+
   return {
     visible,
     lastCategoryId,
     lastAccountId,
+    dataChangedAt,
     open,
     close,
     remember,
+    notifyDataChanged,
   }
 }, {
   persist: {
