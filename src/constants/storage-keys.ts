@@ -13,4 +13,6 @@ export const STORAGE_KEYS = {
   themeMode: 'theme-mode',
   /** 登录态（accessToken + refreshToken）持久化 key */
   auth: 'laozhao:auth',
+  /** 快速记账默认值记忆（上次分类/账户）持久化 key */
+  quickEntry: 'laozhao:quick-entry',
 } as const
