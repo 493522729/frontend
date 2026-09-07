@@ -11,5 +11,8 @@
     "typescript",
     "typescriptreact",
     "vue"
-  ]
+  ],
+  // 离线/内网环境无法访问 schemastore.org 时，禁止 IDE 联网拉取 JSON Schema，
+  // 避免 package.json 等文件反复报 “Problems loading reference” 警告
+  "json.schemaDownload.enable": false
 }

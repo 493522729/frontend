@@ -18,6 +18,7 @@ import type {
   TransactionListParams,
   TransactionListResult,
 } from '@/types/transaction'
+import { BOOK_SEEDS } from '@/api/mock-books'
 
 // ── 字典：分类 ──────────────────────────────────────────
 const EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
@@ -61,12 +62,16 @@ function mulberry32(seed: number): () => number {
 }
 
 // 集中参数：调这里控制 mock 规模
+// 总条数 / 账本归属已下放到 src/api/mock-books.ts 的 BOOK_SEEDS（US-005 多账本分片）
 const MOCK = {
   seed: 42,
-  /** 生成的总条数（虚拟滚动演示至少 1w+） */
-  totalCount: 10_000,
-  /** 当前默认账本 */
-  bookId: 1,
+}
+
+/** 各账本的备注词库 —— 让切账本时流水看起来确实属于那个场景 */
+const NOTE_POOLS: Record<string, string[]> = {
+  daily: ['', '', '', '午餐外卖', '同事聚餐', '地铁通勤', '便利店', '咖啡', '奶茶', '超市采购', '周末买菜', '买书', '话费充值', '游戏月卡', '电影票', '打车回家', '健身月卡'],
+  renovation: ['', '瓷砖采购', '水电改造', '木工进场', '墙面油漆', '橱柜定制', '灯具安装', '地板铺装', '卫浴五金', '设计费', '垃圾清运', '甲醛治理'],
+  travel: ['', '往返机票', '酒店住宿', '景区门票', '当地交通', '伴手礼', '旅行保险', '签证费', '租车', '导游小费'],
 }
 
 // ── 字典初始化（带 ID） ────────────────────────────────
@@ -82,106 +87,112 @@ function init() {
     _categories.push({ ...c, id: id++ })
   for (const c of INCOME_CATEGORIES)
     _categories.push({ ...c, id: id++ })
-  for (const a of ACCOUNT_TEMPLATES)
-    _accounts.push({ ...a, id: id++, bookId: MOCK.bookId })
+  // 账户按账本**各实例化一份**：每个账本有自己独立的账户，ID 全局唯一。
+  // 「装修账本的招商卡」和「日常账本的招商卡」是两条不同记录，余额互不相干。
+  for (const seed of BOOK_SEEDS) {
+    for (const idx of seed.accountTemplateIndexes) {
+      const tpl = ACCOUNT_TEMPLATES[idx]
+      if (tpl)
+        _accounts.push({ ...tpl, id: id++, bookId: seed.id })
+    }
+  }
 }
 
 function generateTransactions() {
   init()
   if (_transactions.length > 0)
     return
-  const rand = mulberry32(MOCK.seed)
   const now = Date.now()
   const day = 24 * 3600 * 1000
 
   const expenseCats = _categories.filter(c => c.type === 'expense')
   const incomeCats = _categories.filter(c => c.type === 'income')
-  const debitAccounts = _accounts.filter(a => a.type !== 'credit')
-  const allAccounts = _accounts
 
-  for (let i = 0; i < MOCK.totalCount; i++) {
-    // 类型分布：85% 支出 / 12% 收入 / 3% 转账
-    const r = rand()
-    const type: TransactionType = r < 0.85 ? 'expense' : r < 0.97 ? 'income' : 'transfer'
+  let nextId = 1
 
-    // 金额：支出对数正态（中位数 50 元）；收入固定偏高；转账较大
-    let amount: number
-    if (type === 'expense') {
-      const log = Math.exp(rand() * 4 + 2) // ~7-740 元
-      amount = Math.round(log * 100)
+  // 按账本分片生成：每个账本用错开的 seed 走独立随机流，
+  // 于是数据规模 / 金额量级 / 收入占比都不同 —— 切账本时看得出区别。
+  for (const seed of BOOK_SEEDS) {
+    const rand = mulberry32(MOCK.seed + seed.id * 7919)
+    // 账户只在**本账本**范围内挑：跨账本转账在业务上不存在
+    const debitAccounts = _accounts.filter(a => a.bookId === seed.id && a.type !== 'credit')
+    const notePool = NOTE_POOLS[seed.type] ?? NOTE_POOLS.daily!
+
+    for (let i = 0; i < seed.txnCount; i++) {
+      // 类型分布：收入占比按账本配置（装修/旅行几乎只有支出），余下里 3% 是转账
+      const r = rand()
+      let type: TransactionType
+      if (r < seed.incomeRatio)
+        type = 'income'
+      else if (r < seed.incomeRatio + 0.03)
+        type = 'transfer'
+      else
+        type = 'expense'
+
+      // 转账至少要 2 个可转账户（现金户之间转账无意义），不够就降级为支出，
+      // 否则会生成「自己转给自己」这种脏数据
+      const transferPool = debitAccounts.filter(a => a.type !== 'cash')
+      if (type === 'transfer' && transferPool.length < 2)
+        type = 'expense'
+
+      // 金额：支出对数正态；收入偏高；转账较大
+      //
+      // 只有**支出**乘账本倍率：装修的瓷砖、家具单笔就是几千，但它的
+      // 「收入」（退款、预算拨入）不会跟着材料价格一起膨胀，
+      // 转账更是纯资金搬运 —— 都乘倍率会算出「装修账本月入 50 万」的荒唐数字。
+      let amount: number
+      if (type === 'expense') {
+        const log = Math.exp(rand() * 4 + 2) // ~7-740 元
+        amount = Math.round(log * 100 * seed.amountScale)
+      }
+      else if (type === 'income') {
+        amount = Math.round((2000 + rand() * 8000) * 100)
+      }
+      else {
+        amount = Math.round((500 + rand() * 5000) * 100)
+      }
+
+      const daysAgo = Math.floor(rand() * 730) // 过去 24 个月
+      const dateStr = new Date(now - daysAgo * day).toISOString().slice(0, 10)
+
+      let accountId: number
+      let toAccountId: number | null = null
+      let categoryId: number
+
+      if (type === 'income') {
+        accountId = debitAccounts[Math.floor(rand() * debitAccounts.length)]!.id
+        categoryId = incomeCats[Math.floor(rand() * incomeCats.length)]!.id
+      }
+      else if (type === 'transfer') {
+        const from = transferPool[Math.floor(rand() * transferPool.length)]!
+        let to = transferPool[Math.floor(rand() * transferPool.length)]!
+        if (to.id === from.id)
+          to = transferPool[(transferPool.indexOf(to) + 1) % transferPool.length]!
+        accountId = from.id
+        toAccountId = to.id
+        categoryId = 0 // 转账不挂分类
+      }
+      else {
+        accountId = debitAccounts[Math.floor(rand() * debitAccounts.length)]!.id
+        categoryId = expenseCats[Math.floor(rand() * expenseCats.length)]!.id
+      }
+
+      _transactions.push({
+        id: nextId++,
+        bookId: seed.id,
+        type,
+        amount,
+        currency: 'CNY',
+        accountId,
+        toAccountId,
+        categoryId,
+        transDate: dateStr,
+        note: notePool[Math.floor(rand() * notePool.length)]!,
+        source: rand() < 0.85 ? 'manual' : rand() < 0.95 ? 'import' : 'recurring',
+        createdAt: now - daysAgo * day,
+        updatedAt: now - daysAgo * day,
+      })
     }
-    else if (type === 'income') {
-      amount = Math.round((2000 + rand() * 8000) * 100)
-    }
-    else {
-      amount = Math.round((500 + rand() * 5000) * 100)
-    }
-
-    const daysAgo = Math.floor(rand() * 730) // 过去 24 个月
-    const transDate = new Date(now - daysAgo * day)
-    const dateStr = transDate.toISOString().slice(0, 10)
-
-    let accountId: number
-    let toAccountId: number | null = null
-    let categoryId: number
-
-    if (type === 'expense') {
-      accountId = debitAccounts[Math.floor(rand() * debitAccounts.length)]!.id
-      categoryId = expenseCats[Math.floor(rand() * expenseCats.length)]!.id
-    }
-    else if (type === 'income') {
-      accountId = debitAccounts[Math.floor(rand() * debitAccounts.length)]!.id
-      categoryId = incomeCats[Math.floor(rand() * incomeCats.length)]!.id
-    }
-    else {
-      // transfer：从非信用卡账户 A 转到非现金账户 B
-      const a1 = debitAccounts.filter(a => a.type !== 'cash')
-      const a2 = allAccounts.filter(a => a.type !== 'credit' && a.type !== 'cash')
-      const from = a1[Math.floor(rand() * a1.length)]!
-      let to = a2[Math.floor(rand() * a2.length)]!
-      if (to.id === from.id)
-        to = a2[(a2.indexOf(to) + 1) % a2.length]!
-      accountId = from.id
-      toAccountId = to.id
-      categoryId = 0 // 转账不挂分类
-    }
-
-    const notePool = [
-      '',
-      '',
-      '',
-      '午餐外卖',
-      '同事聚餐',
-      '地铁通勤',
-      '便利店',
-      '咖啡',
-      '奶茶',
-      '超市采购',
-      '周末买菜',
-      '买书',
-      '话费充值',
-      '游戏月卡',
-      '电影票',
-      '打车回家',
-      '健身月卡',
-    ]
-    const note = notePool[Math.floor(rand() * notePool.length)]!
-
-    _transactions.push({
-      id: i + 1,
-      bookId: MOCK.bookId,
-      type,
-      amount,
-      currency: 'CNY',
-      accountId,
-      toAccountId,
-      categoryId,
-      transDate: dateStr,
-      note,
-      source: rand() < 0.85 ? 'manual' : rand() < 0.95 ? 'import' : 'recurring',
-      createdAt: now - daysAgo * day,
-      updatedAt: now - daysAgo * day,
-    })
   }
 }
 
@@ -194,9 +205,11 @@ export function mockListCategories(): Category[] {
   return _categories
 }
 
-export function mockListAccounts(): Account[] {
+export function mockListAccounts(bookId?: number): Account[] {
   init()
-  return _accounts
+  // 不传 = 全部账本（字典类用途）；传了 = 只给该账本下的账户。
+  // 切账本后筛选面板/记账弹层的账户下拉必须只剩本账本的，否则会选出别账本的账户。
+  return bookId == null ? _accounts : _accounts.filter(a => a.bookId === bookId)
 }
 
 /**
@@ -206,17 +219,20 @@ export function mockListAccounts(): Account[] {
  * mock 阶段没有服务端，就让下游模块直接读这份内存数据做聚合，
  * 保持「调用方只拿聚合结果」的接口形状不变 —— 将来换真接口时调用方零改动。
  */
-export function mockGetAllTransactions(): readonly Transaction[] {
+export function mockGetAllTransactions(bookId?: number): readonly Transaction[] {
   generateTransactions()
-  return _transactions
+  return bookId == null ? _transactions : _transactions.filter(t => t.bookId === bookId)
 }
 
 export function mockListTransactions(params: TransactionListParams): TransactionListResult {
   generateTransactions()
-  const { startDate, endDate, categoryIds, accountIds, types, keyword, page, pageSize } = params
+  const { bookId, startDate, endDate, categoryIds, accountIds, types, keyword, page, pageSize } = params
 
   let filtered = _transactions
 
+  // 账本隔离（US-005）：这是数据可见性的第一道闸，漏了就会串账本
+  if (bookId != null)
+    filtered = filtered.filter(t => t.bookId === bookId)
   if (startDate)
     filtered = filtered.filter(t => t.transDate >= startDate)
   if (endDate)

@@ -15,4 +15,6 @@ export const STORAGE_KEYS = {
   auth: 'laozhao:auth',
   /** 快速记账默认值记忆（上次分类/账户）持久化 key */
   quickEntry: 'laozhao:quick-entry',
+  /** 当前账本（US-005：刷新后仍停在原来那本） */
+  book: 'laozhao:book',
 } as const

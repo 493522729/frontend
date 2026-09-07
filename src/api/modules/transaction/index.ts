@@ -32,9 +32,14 @@ export function listCategories(): Promise<Category[]> {
   return simulateLatency(mockListCategories())
 }
 
-/** 账户字典 */
-export function listAccounts(): Promise<Account[]> {
-  return simulateLatency(mockListAccounts())
+/**
+ * 账户字典
+ *
+ * 传 bookId 只返回该账本下的账户（US-005）：切账本后筛选面板和记账弹层
+ * 的账户下拉必须跟着换，否则能选到别的账本的账户，数据就串了。
+ */
+export function listAccounts(bookId?: number): Promise<Account[]> {
+  return simulateLatency(mockListAccounts(bookId))
 }
 
 /** 分页查交易 */

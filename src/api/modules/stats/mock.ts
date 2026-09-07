@@ -113,9 +113,11 @@ function buildCategorySlices(
 }
 
 export function mockGetDashboardOverview(query: DashboardQuery = {}): DashboardOverview {
-  const all = mockGetAllTransactions()
+  // 账本隔离（US-005）：收支、趋势、净值都只算当前账本。
+  // 净值尤其不能跨账本 —— 把「装修」和「日常」的余额加在一起没有意义
+  const all = mockGetAllTransactions(query.bookId)
   const categories = mockListCategories()
-  const accounts = mockListAccounts()
+  const accounts = mockListAccounts(query.bookId)
 
   // 统计锚点：默认当月，传了 month 就查历史月份
   const anchorMonth = query.month ? parseMonth(query.month) : today().toPlainYearMonth()
@@ -168,4 +170,23 @@ export function mockGetDashboardOverview(query: DashboardQuery = {}): DashboardO
     netAssets,
     transactionCount: monthTxns.length,
   }
+}
+
+/**
+ * 全账本总资产净值（跨账本聚合，不受 bookId 过滤）
+ * ====================================================================
+ *
+ * 与 mockGetDashboardOverview().netAssets 口径完全一致：
+ *   Σ所有账户期初 + Σ所有收入 - Σ所有支出
+ * 只是把范围从「当前账本」扩到「全部账本」。
+ *
+ * 不传 bookId 的 helper（mockGetAllTransactions / mockListAccounts）会返回全量数据，
+ * 所以这里能一次性拉全账本统计；将来真后端落地时改成一条「全账本聚合」SQL 即可。
+ */
+export function mockGetTotalNetAssets(): number {
+  const allTxns = mockGetAllTransactions()
+  const allAccounts = mockListAccounts()
+  return sumCents(allAccounts.map(a => a.initBalance))
+    + sumByType(allTxns, 'income')
+    - sumByType(allTxns, 'expense')
 }
