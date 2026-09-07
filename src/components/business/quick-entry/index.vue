@@ -6,6 +6,7 @@ import { NButton, useMessage, useNotification } from 'naive-ui'
 import { h, nextTick, reactive, ref, watch } from 'vue'
 import { createTransaction, deleteTransaction } from '@/api/modules/transaction'
 import { TRANSACTION_TYPE_META, TRANSACTION_TYPES } from '@/enums/transaction'
+import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { formatCents, parseYuanToCents } from '@/utils/money'
@@ -27,6 +28,7 @@ import { formatDate, today } from '@/utils/temporal'
 
 const quickEntry = useQuickEntryStore()
 const dict = useDictStore()
+const book = useBookStore()
 const message = useMessage()
 const notification = useNotification()
 
@@ -96,11 +98,16 @@ watch(() => form.amountText, (val) => {
 watch(() => quickEntry.visible, async (visible) => {
   if (!visible)
     return
-  await dict.ensureLoaded()
+  // 账户按账本加载（dict 内部记账本标记，切过账本会重新拉）
+  await dict.ensureLoaded(book.currentBookId)
 
   // 回填上次的分类/账户（PRD 8.3 默认值记忆）
   form.categoryId = quickEntry.lastCategoryId
-  form.accountId = quickEntry.lastAccountId
+  // 账户是账本隔离的：记忆里的账户可能属于别的账本，回填前必须校验。
+  // 否则会把「日常账本的招商卡」塞给装修账本，一保存就串账本了
+  form.accountId = dict.accounts.some(a => a.id === quickEntry.lastAccountId)
+    ? quickEntry.lastAccountId
+    : null
 
   // 根据记忆分类的类型反推默认类型：上次记的是「工资」就默认切到「收入」
   const rememberedCategory = form.categoryId == null ? null : dict.categoryMap.get(form.categoryId)
@@ -141,11 +148,11 @@ function validate(): string | null {
   return null
 }
 
-/** 组装交易入参（mock 阶段 bookId 固定 1，US-005 多账本后从 book store 取） */
+/** 组装交易入参 —— 落到当前账本下（US-005） */
 function buildInput(): Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> {
   const isTransfer = form.type === 'transfer'
   return {
-    bookId: 1,
+    bookId: book.currentBookId,
     type: form.type,
     amount: parseYuanToCents(form.amountText),
     currency: 'CNY',
@@ -176,6 +183,7 @@ function showSavedToast(tx: Transaction) {
         notification.info({ title: '已撤销该笔记录' })
         // 广播变更信号：列表把这笔移除
         quickEntry.notifyDataChanged()
+        void book.refresh()
       },
     }, { default: () => '撤销' }),
   })
@@ -198,6 +206,8 @@ async function submit(closeAfter: boolean) {
     quickEntry.remember(form.categoryId, form.accountId)
     // 广播「数据已变更」信号：交易列表等页面 watch 它刷新数据
     quickEntry.notifyDataChanged()
+    // 账本摘要里的笔数变了，顶栏切换器同步（不影响当前输入）
+    void book.refresh()
     showSavedToast(created)
 
     // 清空金额/备注、保留类型/分类/账户，聚焦金额准备下一笔

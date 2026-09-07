@@ -17,6 +17,7 @@ import type { TransactionType } from '@/enums/transaction'
  */
 import type { Transaction } from '@/types/transaction'
 import { reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   batchDeleteTransactions,
   batchUpdateCategory,
@@ -24,6 +25,8 @@ import {
   listTransactions,
   updateTransaction,
 } from '@/api/modules/transaction'
+import { TRANSACTION_TYPES } from '@/enums/transaction'
+import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 
 export interface FilterState {
@@ -38,6 +41,9 @@ export interface FilterState {
 
 export function useTransactionList() {
   const dict = useDictStore()
+  const book = useBookStore()
+  const route = useRoute()
+  const router = useRouter()
 
   // ── 数据 ──
   const list = ref<Transaction[]>([])
@@ -67,6 +73,7 @@ export function useTransactionList() {
     filter.categoryIds = []
     filter.keyword = ''
     page.value = 1
+    syncToQuery()
   }
 
   function applyFilter(patch: Partial<FilterState>) {
@@ -74,10 +81,61 @@ export function useTransactionList() {
     page.value = 1
   }
 
+  // ── URL 查询串同步（US-005：切账本 / 刷新都不丢筛选条件） ──────────
+  /**
+   * 从 URL 恢复筛选条件
+   *
+   * URL 是用户可编辑的，所有取值都要**安全降级**：类型不对、枚举值非法、
+   * 页码是负数，一律回落到默认值，不能让手改的 URL 把页面搞崩。
+   */
+  function restoreFromQuery(): void {
+    const q = route.query
+    const str = (v: unknown): string | null =>
+      typeof v === 'string' && v.length > 0 ? v : null
+    const ids = (v: unknown): number[] =>
+      typeof v === 'string' && v.length > 0
+        ? v.split(',').map(Number).filter(n => Number.isInteger(n) && n > 0)
+        : []
+
+    filter.startDate = str(q.startDate)
+    filter.endDate = str(q.endDate)
+    const t = str(q.type)
+    filter.type = (TRANSACTION_TYPES as readonly string[]).includes(t ?? '')
+      ? t as FilterState['type']
+      : null
+    filter.accountIds = ids(q.accounts)
+    filter.categoryIds = ids(q.categories)
+    filter.keyword = str(q.keyword) ?? ''
+    const p = Number(q.page)
+    page.value = Number.isInteger(p) && p > 0 ? p : 1
+  }
+
+  /**
+   * 写回 URL
+   *
+   * 用 replace 而不是 push —— 每敲一个筛选字符就多一条历史记录，
+   * 用户按返回键要按十几次才能退出页面，那是灾难。
+   * 值为空的参数整个移除，避免留一堆 `type=&keyword=` 的脏 query。
+   */
+  function syncToQuery(): void {
+    const patch: Record<string, string | undefined> = {
+      startDate: filter.startDate ?? undefined,
+      endDate: filter.endDate ?? undefined,
+      type: filter.type ?? undefined,
+      accounts: filter.accountIds.length > 0 ? filter.accountIds.join(',') : undefined,
+      categories: filter.categoryIds.length > 0 ? filter.categoryIds.join(',') : undefined,
+      keyword: filter.keyword || undefined,
+      page: page.value > 1 ? String(page.value) : undefined,
+    }
+    void router.replace({ query: { ...route.query, ...patch } })
+  }
+
   async function load() {
     loading.value = true
     try {
       const params = {
+        // 账本隔离：所有流水查询都带当前账本，切账本即换一套数据
+        bookId: book.currentBookId,
         startDate: filter.startDate || undefined,
         endDate: filter.endDate || undefined,
         types: filter.type ? [filter.type] : undefined,
@@ -121,12 +179,16 @@ export function useTransactionList() {
     () => [filter.startDate, filter.endDate, filter.type, filter.accountIds.length, filter.categoryIds.length, filter.keyword],
     () => {
       page.value = 1
+      syncToQuery()
       if (debounceTimer)
         clearTimeout(debounceTimer)
       debounceTimer = setTimeout(load, 250)
     },
     { deep: true },
   )
+
+  // 翻页也记进 URL（刷新后停在第 7 页而不是跳回第 1 页）
+  watch(page, () => syncToQuery())
 
   // ── 行内编辑（乐观更新）──
   async function saveRow(id: number, patch: Partial<Transaction>) {
@@ -191,11 +253,28 @@ export function useTransactionList() {
     await load()
   }
 
-  // ── 初始化：先加载字典，再加载首屏 ──
+  // ── 初始化：先定账本 → 再载字典（账户按账本过滤）→ 最后拉首屏 ──
   (async () => {
-    await dict.ensureLoaded()
+    await book.ensureLoaded()
+    await dict.ensureLoaded(book.currentBookId)
+    // 先按 URL 还原筛选，再拉数据 —— 顺序反了会先闪一下未筛选的全量列表
+    restoreFromQuery()
     await load()
   })()
+
+  // 切账本：换一批账户字典 + 回第 1 页重查
+  watch(
+    () => book.currentBookId,
+    async (id) => {
+      await dict.ensureLoaded(id)
+      // 账户是账本隔离的，旧账本选中的账户在新账本里不存在 ——
+      // 留着会直接筛出空列表。其余条件（日期/类型/关键词）跨账本仍成立，保留
+      if (filter.accountIds.length > 0)
+        filter.accountIds = []
+      page.value = 1
+      await load()
+    },
+  )
 
   // 注意：不显式声明返回类型，让 TS 推断；调用方解构时 Vue 自动 unwrap ref
   return {
