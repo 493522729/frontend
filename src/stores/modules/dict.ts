@@ -22,8 +22,15 @@ export const useDictStore = defineStore('dict', () => {
   const loadingCategories = ref(false)
   const loadingAccounts = ref(false)
   const initialized = ref(false)
+  /**
+   * 当前 accounts 是按哪个账本加载的（null = 全量/未指定）
+   *
+   * US-005：账户是账本隔离的，切账本后必须换一批账户。
+   * 没有这个标记的话，切到装修账本还会看到日常账本的账户。
+   */
+  const accountsBookId = ref<number | null>(null)
 
-  /** 按需加载分类字典（幂等） */
+  /** 按需加载分类字典（幂等）—— 分类全局共享，不随账本变 */
   async function ensureCategories(): Promise<void> {
     if (loadingCategories.value)
       return
@@ -38,35 +45,42 @@ export const useDictStore = defineStore('dict', () => {
     }
   }
 
-  /** 按需加载账户字典（幂等） */
-  async function ensureAccounts(): Promise<void> {
+  /**
+   * 按需加载账户字典
+   *
+   * 传 bookId 只加载该账本的账户；账本变了会强制重载（不算缓存命中）。
+   */
+  async function ensureAccounts(bookId?: number): Promise<void> {
     if (loadingAccounts.value)
       return
-    if (accounts.value.length > 0)
+    const sameBook = bookId == null || bookId === accountsBookId.value
+    if (accounts.value.length > 0 && sameBook)
       return
     loadingAccounts.value = true
     try {
-      accounts.value = await listAccounts()
+      accounts.value = await listAccounts(bookId)
+      accountsBookId.value = bookId ?? null
     }
     finally {
       loadingAccounts.value = false
     }
   }
 
-  /** 首次进入时一次性加载全部字典 */
-  async function ensureLoaded(): Promise<void> {
-    if (initialized.value)
+  /** 首次进入 / 切换账本时加载（幂等，账本变了会重新拉账户） */
+  async function ensureLoaded(bookId?: number): Promise<void> {
+    const sameBook = bookId == null || bookId === accountsBookId.value
+    if (initialized.value && sameBook)
       return
-    await Promise.all([ensureCategories(), ensureAccounts()])
+    await Promise.all([ensureCategories(), ensureAccounts(bookId)])
     initialized.value = true
   }
 
   /** 强制刷新（设置项改了分类/账户后调用） */
-  async function refresh(): Promise<void> {
+  async function refresh(bookId?: number): Promise<void> {
     categories.value = []
     accounts.value = []
     initialized.value = false
-    await ensureLoaded()
+    await ensureLoaded(bookId)
   }
 
   // ── 派生：id → 实体映射（O(1) 查表） ──

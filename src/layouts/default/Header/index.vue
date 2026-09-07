@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/modules/app'
+import BookSwitcher from './BookSwitcher.vue'
 
 /**
- * 顶栏：侧边栏折叠开关 + 面包屑位 + 主题切换
+ * 顶栏：侧边栏折叠开关 + 账本切换器 + 主题切换
  * Cmd/Ctrl+B 切换侧边栏（架构文档 4.2，useHotkey 落地后迁移过去）
  */
 const appStore = useAppStore()
@@ -32,6 +33,9 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
           <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
       </button>
+
+      <!-- 账本切换器：切的是全局「当前账本」，各页面 watch 到变化后自行重新取数 -->
+      <BookSwitcher />
     </div>
 
     <div class="header-right">
@@ -65,6 +69,12 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   position: sticky;
   top: 0;
   z-index: 100; // 架构文档 3.6 header 层
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .icon-svg {
