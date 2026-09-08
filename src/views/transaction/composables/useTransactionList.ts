@@ -23,6 +23,7 @@ import {
   batchUpdateCategory,
   deleteTransaction,
   listTransactions,
+  restoreTransactions,
   updateTransaction,
 } from '@/api/modules/transaction'
 import { TRANSACTION_TYPES } from '@/enums/transaction'
@@ -64,6 +65,9 @@ export function useTransactionList() {
 
   // ── 多选 ──
   const selectedIds = ref<number[]>([])
+
+  // 最近一次批量删除的行（供「5s 撤销 toast」恢复用，mock 阶段直接放回内存表）
+  const lastRemoved = ref<Transaction[]>([])
 
   function resetFilter() {
     filter.startDate = null
@@ -233,6 +237,7 @@ export function useTransactionList() {
       return
     const set = new Set(selectedIds.value)
     const removed = list.value.filter(t => set.has(t.id))
+    lastRemoved.value = removed
     list.value = list.value.filter(t => !set.has(t.id))
     total.value -= removed.length
     try {
@@ -243,6 +248,18 @@ export function useTransactionList() {
       await load()
       throw err
     }
+  }
+
+  /**
+   * 撤销最近一次批量删除：把 lastRemoved 原样放回内存表，再整体 reload。
+   * 配合页面上的 5s 撤销 toast 使用（PRD 4.3：破坏性操作给撤销窗口）。
+   */
+  async function restoreLastRemoved() {
+    if (lastRemoved.value.length === 0)
+      return
+    await restoreTransactions(lastRemoved.value)
+    lastRemoved.value = []
+    await load()
   }
 
   async function batchSetCategory(categoryId: number) {
@@ -293,6 +310,7 @@ export function useTransactionList() {
     saveRow,
     removeOne,
     removeBatch,
+    restoreLastRemoved,
     batchSetCategory,
   }
 }
