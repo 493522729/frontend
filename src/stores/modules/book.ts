@@ -1,8 +1,14 @@
-import type { BookWithStats } from '@/types/book'
+import type { Book, BookWithStats } from '@/types/book'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { DEFAULT_BOOK_ID } from '@/api/mock-books'
-import { listBooks } from '@/api/modules/book'
+import {
+  createBook,
+  deleteBook,
+  listBooks,
+  setDefaultBook,
+  updateBook,
+} from '@/api/modules/book'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
 
 /**
@@ -67,6 +73,39 @@ export const useBookStore = defineStore('book', () => {
     books.value = await listBooks()
   }
 
+  // ── 账本管理（CRUD，Now 清单 #2）───────────────────────
+  // 写操作后统一 refresh() 让顶栏切换器、各业务页面同步到最新账本列表。
+
+  async function createBookEntry(input: Omit<Book, 'id'>): Promise<void> {
+    await createBook(input)
+    await refresh()
+  }
+
+  async function updateBookEntry(id: number, patch: Partial<Omit<Book, 'id'>>): Promise<void> {
+    await updateBook(id, patch)
+    await refresh()
+  }
+
+  /**
+   * 删除账本：若删的是当前账本，先回落到一个存活账本（默认账本优先），
+   * 否则各业务页面 watch 到的还是已不存在的 currentBookId、拉不到数据。
+   */
+  async function deleteBookEntry(id: number): Promise<void> {
+    await deleteBook(id)
+    if (currentBookId.value === id) {
+      const fallback = books.value.find(b => b.isDefault)?.id
+        ?? books.value[0]?.id
+        ?? DEFAULT_BOOK_ID
+      currentBookId.value = fallback
+    }
+    await refresh()
+  }
+
+  async function setDefaultBookEntry(id: number): Promise<void> {
+    await setDefaultBook(id)
+    await refresh()
+  }
+
   return {
     books,
     currentBookId,
@@ -76,6 +115,10 @@ export const useBookStore = defineStore('book', () => {
     ensureLoaded,
     switchBook,
     refresh,
+    createBookEntry,
+    updateBookEntry,
+    deleteBookEntry,
+    setDefaultBookEntry,
   }
 }, {
   persist: {
