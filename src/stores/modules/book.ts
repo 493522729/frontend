@@ -103,6 +103,9 @@ export const useBookStore = defineStore('book', () => {
 
   async function setDefaultBookEntry(id: number): Promise<void> {
     await setDefaultBook(id)
+    // 同时切到该账本：默认账本应作为「落地账本」生效（currentBookId 已持久化，
+    // 这样刷新/重进后停留的就是它），而不只是服务端的一个 isDefault 标记。
+    switchBook(id)
     await refresh()
   }
 

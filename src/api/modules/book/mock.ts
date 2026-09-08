@@ -71,6 +71,10 @@ export function mockDeleteBook(id: number): void {
 
 export function mockSetDefaultBook(id: number): void {
   init()
+  const target = _books.find(b => b.id === id)
+  if (!target)
+    throw new Error(`Book ${id} not found`)
+  target.isDefault = true
   unsetOthersDefault(id)
 }
 

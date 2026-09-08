@@ -9,7 +9,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import { BOOK_SEEDS } from '@/api/mock-books'
-import { mockListBooks } from '@/api/modules/book/mock'
+import {
+  mockListBooks,
+  mockSetDefaultBook,
+} from '@/api/modules/book/mock'
 import {
   mockGetAllTransactions,
   mockListAccounts,
@@ -78,5 +81,26 @@ describe('多账本数据隔离', () => {
   it('切换器看到的各账本规模确实不同（否则切换效果看不出来）', () => {
     const counts = BOOK_SEEDS.map(s => mockGetAllTransactions(s.id).length)
     expect(new Set(counts).size).toBe(counts.length)
+  })
+
+  it('设为默认账本会真正打上 isDefault 标记，且全局唯一', () => {
+    const before = mockListBooks()
+    const originalDefault = before.find(b => b.isDefault)
+    const target = before.find(b => !b.isDefault)!
+    expect(target).toBeDefined()
+
+    mockSetDefaultBook(target.id)
+
+    const after = mockListBooks()
+    const defaults = after.filter(b => b.isDefault)
+    expect(defaults).toHaveLength(1)
+    expect(defaults[0]!.id).toBe(target.id)
+    // 原来的默认账本应当被取消默认
+    if (originalDefault)
+      expect(after.find(b => b.id === originalDefault.id)!.isDefault).toBe(false)
+  })
+
+  it('设为默认账本对不存在的账本会报错', () => {
+    expect(() => mockSetDefaultBook(-999)).toThrow()
   })
 })
