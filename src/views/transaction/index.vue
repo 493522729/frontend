@@ -15,7 +15,7 @@
 import type { App } from 'vue'
 import type { VxeGridProps } from 'vxe-table'
 import type { Transaction } from '@/types/transaction'
-import { NButton, NInput, NInputNumber, NPagination, NSelect, NSpace, NTag, useMessage, useNotification } from 'naive-ui'
+import { useMessage, useNotification } from 'naive-ui'
 import { computed, getCurrentInstance, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
 import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transaction'
@@ -44,28 +44,15 @@ const notification = useNotification()
 const settings = useSettingsStore()
 const dict = useDictStore()
 
-// vxe-table 4.x 的 edit-closed 在「editRender={name:'input'} + 自定义 slot」组合下，
-// 偶发会把编辑前的 row 引用传回来，row[field] 拿不到用户在 NSelect 里刚选的值，
-// 导致保存的 patch 是个「看似没改」的旧值。这里让 slot 在 @update:value 里
-// 主动缓存最近一次选择，onEditClosed 优先用缓存（id+field 校验避免串），
-// 缓存没命中再回退到 row[field]。
-const editBuffer = ref<{ id: number, field: string, value: unknown } | null>(null)
-
-// 写 buffer 走函数：在 template 上下文里 VLS 会把 ref 自动 unwrap 成可空值，
-// 直接 `editBuffer.value = ...` 会触发 TS18047（"editBuffer is possibly null"）。
-// 把写入逻辑收到 script 里就绕开了这个误报。
-function pushEditBuffer(id: number, field: string, value: unknown) {
-  editBuffer.value = { id, field, value }
-}
+// ── 行内编辑保存策略 ──
+//  - 金额 / 备注：编辑框失焦时由 @edit-closed 统一回写保存
+//  - 分类：NSelect「选完即保存」，在 @update:value 里直接 saveRow 并 clearEdit 退出编辑态；
+//          因此 @edit-closed 对 categoryId 列跳过，避免重复保存 / 多弹一次提示
+// 焦点竞态的根因与修复见下方 onDocMouseDownCapture 注释。
 
 // 单独抽出这个 handler：
 // 1) template 里 NSelect 的 @update:value 多行回调会被 vue/html-indent 误判缩进；
 // 2) 业务逻辑收在 script 里，单测也好挂
-function onCategoryEditChange(row: Transaction, v: number) {
-  row.categoryId = v
-  pushEditBuffer(row.id, 'categoryId', v)
-}
-
 const {
   list,
   total,
@@ -117,7 +104,7 @@ onBeforeUnmount(() => {
   gridResizeObserver = null
 })
 
-const categoryOptions = computed(() => dict.categories.map(c => ({ label: c.name, value: c.id })))
+const categoryOptions = computed(() => dict.categories.map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })))
 const batchCategoryId = ref<number | null>(null)
 
 /** 当前是否有生效的筛选条件 —— 空状态文案判断用 */
@@ -156,8 +143,26 @@ function onRowSizeChange(s: RowSize) {
 // ── 列配置持久化（PRD §15.2.2：显隐 / 列宽 / 顺序刷新后保留） ──
 // key 含页面路径，避免和其他表格串。vxe 的列自定义（拖拽/显隐/调宽）改动后，
 // 通过 @custom / @resizable-change 事件把当前列状态落盘。
-const COLUMN_KEY = `${STORAGE_KEYS.columnsPrefix}/transaction`
+// 加版本号 v2：旧的列持久化数据（v1 存的 action fixed right / checkbox 44px 等）会导致新版布局异常，
+// 直接换 key 弃用旧数据，让新基准列生效。
+const COLUMN_KEY = `${STORAGE_KEYS.columnsPrefix}/transaction/v2`
 const gridRef = ref<unknown>(null)
+
+// onCategoryChange 定义在此：它依赖 saveRow（在上方声明），放在后面以通过 ts/no-use-before-define；
+// <script setup> 里函数声明会提升，template 中通过 @update:value="onCategoryChange(row, $event)" 引用不受顺序影响。
+async function onCategoryChange(row: Transaction, v: number) {
+  if (row.categoryId === v)
+    return
+  // 分类列常驻 NSelect，「选完即保存」：乐观更新本地行，再落库；不进 vxe 编辑态，无需 clearEdit
+  row.categoryId = v
+  try {
+    await saveRow(row.id, { categoryId: v })
+    message.success('已保存', { duration: 1500 })
+  }
+  catch {
+    message.error('保存失败')
+  }
+}
 
 interface ColState { visible: boolean, width: number }
 
@@ -166,8 +171,8 @@ function loadColumnState(): Map<string, ColState> | null {
     const raw = localStorage.getItem(COLUMN_KEY)
     if (!raw)
       return null
-    const arr = JSON.parse(raw) as Array<{ field: string, visible: boolean, width: number }>
-    return new Map(arr.map(s => [s.field, { visible: s.visible, width: s.width }]))
+    const obj = JSON.parse(raw) as Record<string, ColState>
+    return new Map(Object.entries(obj))
   }
   catch {
     return null
@@ -175,57 +180,76 @@ function loadColumnState(): Map<string, ColState> | null {
 }
 
 function persistColumns() {
-  // 直接从 grid 实例读当前列状态，不依赖事件 payload 形状，最稳
-  const grid = gridRef.value as { getColumns?: () => Array<{ field?: string, visible?: boolean, renderWidth?: number, width?: number }> } | null
+  // 直接从 grid 实例读当前列状态，不依赖事件 payload 形状，最稳。
+  // 只存「列 key → {可见性, 宽度}」，不存顺序 —— 顺序永远按 BASE_COLUMNS 固定，
+  // 这样即使 getColumns() 返回的顺序与基准不同（拖宽后物理顺序变化），重建时也不会乱序。
+  const grid = gridRef.value as {
+    getColumns?: () => Array<{ field?: string, type?: string, visible?: boolean, renderWidth?: number, width?: number }>
+  } | null
   const cols = grid?.getColumns?.() ?? []
-  const state = cols
-    .filter(c => c.field)
-    .map(c => ({ field: c.field as string, visible: c.visible !== false, width: c.renderWidth || c.width || 0 }))
-    .filter(s => s.width > 0)
+  const state: Record<string, ColState> = {}
+  for (const c of cols) {
+    // checkbox 列没有 field，用 type 兜底做 key；其余列用 field
+    const key = c.field || (c.type === 'checkbox' ? '__checkbox__' : '')
+    if (!key)
+      continue
+    const width = c.renderWidth || c.width || 0
+    if (width > 0)
+      state[key] = { visible: c.visible !== false, width }
+  }
   localStorage.setItem(COLUMN_KEY, JSON.stringify(state))
 }
 
 /** 列定义基准（不含可见性/宽度，持久化的状态叠加在它之上） */
 type ColDef = NonNullable<VxeGridProps<Transaction>['columns']>[number]
 const BASE_COLUMNS: ColDef[] = [
-  { type: 'checkbox', width: 44, fixed: 'left' },
-  { field: 'transDate', title: '日期', width: 120, sortable: true, fixed: 'left' },
-  { field: 'type', title: '类型', width: 90, slots: { default: 'type_cell' } },
+  // checkbox 列宽度要覆盖勾选框 + 左右 padding：44px 在 size=small 下会被压成细条，给 52px
+  { type: 'checkbox', width: 52, fixed: 'left', align: 'center' },
+  { field: 'transDate', title: '日期', width: 110, sortable: true, fixed: 'left' },
+  { field: 'type', title: '类型', width: 80, slots: { default: 'type_cell' }, align: 'center' },
   {
     field: 'categoryId',
     title: '分类',
-    width: 140,
-    editRender: { name: 'input' },
-    slots: { default: 'category_cell', edit: 'category_edit' },
+    width: 130,
+    // 分类列不进 vxe 编辑态：直接常驻 NSelect（见模板 #category_cell 注释），选完即保存
+    slots: { default: 'category_cell' },
   },
-  { field: 'accountId', title: '账户', width: 140, slots: { default: 'account_cell' } },
+  { field: 'accountId', title: '账户', width: 130, slots: { default: 'account_cell' } },
   {
     field: 'amount',
     title: '金额',
-    width: 140,
+    width: 120,
     align: 'right',
     sortable: true,
     editRender: { name: 'input' },
     slots: { default: 'amount_cell', edit: 'amount_edit' },
   },
-  { field: 'note', title: '备注', minWidth: 180, editRender: { name: 'input' }, slots: { default: 'note_cell', edit: 'note_edit' } },
-  { field: 'source', title: '来源', width: 100, slots: { default: 'source_cell' } },
-  { field: 'action', title: '操作', width: 90, fixed: 'right', slots: { default: 'action_cell' } },
+  // 备注列不固定宽度，用 minWidth 让其在宽屏下自动拉伸，避免右侧大片留白
+  { field: 'note', title: '备注', minWidth: 160, editRender: { name: 'input' }, slots: { default: 'note_cell', edit: 'note_edit' } },
+  { field: 'source', title: '来源', width: 90, slots: { default: 'source_cell' } },
+  // 操作列不固定右侧：当前页面数据量（50 行/页）不需要固定，固定反而在表格未横向滚动时制造右侧阴影留白
+  { field: 'action', title: '操作', width: 80, slots: { default: 'action_cell' } },
 ]
 
-/** 合并持久化状态：顺序按已存字段顺序，可见性/宽度叠加；新增列自动追加在末尾 */
+/** 合并持久化状态：顺序始终按 BASE_COLUMNS 固定，只叠加「可见性 / 宽度」 */
 function buildColumns(): ColDef[] {
   const saved = loadColumnState()
   if (!saved)
     return BASE_COLUMNS
-  const ordered = [...saved.keys()]
-    .map(f => BASE_COLUMNS.find(c => (c as { field?: string }).field === f))
-    .filter(Boolean) as ColDef[]
-  const extra = BASE_COLUMNS.filter(c => !saved.has((c as { field?: string }).field ?? ''))
-  return [...ordered, ...extra].map((c) => {
-    const f = (c as { field?: string }).field
-    const s = f ? saved.get(f) : undefined
-    return s ? { ...c, visible: s.visible, width: s.width } : c
+  return BASE_COLUMNS.map((c) => {
+    const key = (c as { field?: string }).field || (c.type === 'checkbox' ? '__checkbox__' : '')
+    const s = key ? saved.get(key) : undefined
+    if (!s)
+      return c
+    // 只有基准列本身声明了固定 width 的列，才允许持久化覆盖 width；
+    // 弹性列（如备注 minWidth）保持 width 未定义，确保在宽屏下自动拉伸填充剩余空间，
+    // 避免右侧出现大片空白。
+    const baseHasFixedWidth = 'width' in c && c.width != null
+    return {
+      ...c,
+      visible: s.visible,
+      ...(baseHasFixedWidth ? { width: Math.max(40, Math.min(500, s.width)) } : {}),
+    }
   })
 }
 
@@ -251,33 +275,22 @@ const gridOptions = computed<VxeGridOptions>(() => ({
   tooltipConfig: { mode: 'title' },
   // 行内编辑开启 editConfig.showStatus 时必须保留原始数据源，否则无法计算编辑状态
   keepSource: true,
-  loading: loading.value,
-  data: list.value,
+  // ⚠️ data / loading 不放进这个 computed：
+  // 之前把它们塞进 computed、再用 watch 手动 mutate 这个 computed 的缓存对象来同步，
+  // 是脆弱写法——list 重新赋值后 computed 会重算出新对象，而 watch 改的是旧对象，
+  // v-bind 用的是新对象，二者错位，导致 vxe 拿不到最新数据、单元格「改了和没改一样」。
+  // 改为模板里 `:data="list" :loading="loading"` 直接绑定，list 一重新赋值就立刻下发给 vxe。
   // 列定义走 buildColumns()：基准列叠加 localStorage 里持久化的「显隐/列宽/顺序」
   columns: initialColumns,
   scrollY: { enabled: true },
   editConfig: { trigger: 'dblclick' as const, mode: 'cell' as const, showStatus: true },
 }))
 
-// 同步 loading / data 到 gridOptions（vxe-table 是命令式，watch 同步）
-watch(loading, (v) => {
-  gridOptions.value.loading = v
-})
-watch(list, (v) => {
-  gridOptions.value.data = v
-})
-
-// ── 行内编辑：vxe-table 关闭编辑时触发，回写并保存 ──
+// ── 行内编辑：vxe-table 关闭编辑时触发，回写并保存（金额 / 备注走这里） ──
+// 分类列已改为常驻 NSelect、不走 vxe 编辑态（见模板 #category_cell 注释）。
 async function onEditClosed(event: { row: Transaction, column: { field: string } }) {
   const { row, column } = event
-  // 优先用 slot 缓存的「最近一次选择」——见 editBuffer 注释。
-  // 缓存没命中（不是本次编辑的格子 / 用户没改值）才回退到 row[field]
-  const buffered = editBuffer.value
-  const value = (buffered && buffered.id === row.id && buffered.field === column.field)
-    ? buffered.value
-    : (row as unknown as Record<string, unknown>)[column.field]
-  editBuffer.value = null
-  const patch: Partial<Transaction> = { [column.field]: value as Transaction[keyof Transaction] }
+  const patch = { [column.field]: (row as unknown as Record<string, unknown>)[column.field] } as Partial<Transaction>
   try {
     await saveRow(row.id, patch)
     message.success('已保存', { duration: 1500 })
@@ -454,12 +467,28 @@ async function onBatchSetCategory() {
               v-else
               ref="gridRef"
               v-bind="gridOptions"
+              :data="list"
+              :loading="loading"
               @checkbox-change="(e: any) => selectedIds = e.records.map((r: Transaction) => r.id)"
               @checkbox-all="(e: any) => selectedIds = e.records.map((r: Transaction) => r.id)"
               @edit-closed="onEditClosed"
               @custom="onColumnCustom"
               @resizable-change="onResizableChange"
             >
+              <!--
+                vxe-table 4.x 默认未注册 VxeLoading 组件，直接用 loading prop
+                会报「缺少 vxe-loading 组件」警告。提供 #loading 插槽后，table
+                会走插槽渲染，不再依赖全局注册的 loading 组件。
+              -->
+              <template #loading="slotProps">
+                <div v-if="(slotProps as unknown as { loading: boolean }).loading" class="grid-loading-mask">
+                  <div class="grid-loading-spinner">
+                    <span class="grid-loading-dot" />
+                    <span class="grid-loading-text">加载中…</span>
+                  </div>
+                </div>
+              </template>
+
               <!-- 类型 -->
               <template #type_cell="{ row }">
                 <NTag :type="TRANSACTION_TYPE_META[(row as Transaction).type].naiveTagType" size="small" :bordered="false">
@@ -467,19 +496,16 @@ async function onBatchSetCategory() {
                 </NTag>
               </template>
 
-              <!-- 分类：显示态 -->
+              <!--
+                分类列：始终以 NSelect 呈现（不进 vxe 编辑态）。
+                之所以不走「双击进入编辑态再选」：NSelect 下拉默认 teleport 到 document.body，
+                点选项的 mousedown 落在 body 上，vxe 会误判为「点击单元格外部」而抢先关闭编辑态并用旧值回写，
+                紧接着 NSelect 被卸载、@update:value 再也无法触发，新值传不过去（经典竞态）。
+                Naive 的 v-binder 定位又强依赖 teleport 到 body，任何 getPopupContainer / teleported:false
+                都会把下拉定位打乱（选项压到触发器上、点不中）。所以直接把 NSelect 常驻单元格，
+                选完即保存，彻底绕开「失焦→关编辑→旧值回写」这一连串问题。转账行无分类，显示「—」。
+              -->
               <template #category_cell="{ row }">
-                <!-- 转账没有分类（mock 里 categoryId=0），不再走到「· -」那种两个占位符的难看兜底 -->
-                <span v-if="row.type === 'transfer'" class="cell-muted">—</span>
-                <span v-else class="cell-inline">
-                  <span class="cell-icon">{{ dict.categoryMap.get(row.categoryId)?.icon ?? '·' }}</span>
-                  <span>{{ dict.categoryMap.get(row.categoryId)?.name ?? '-' }}</span>
-                </span>
-              </template>
-
-              <!-- 分类：编辑态 -->
-              <template #category_edit="{ row }">
-                <!-- 转账没有可挂的分类，禁止进入编辑态（否则保存一个 income/expense 分类到 transfer 上是脏数据） -->
                 <span v-if="row.type === 'transfer'" class="cell-muted">—</span>
                 <NSelect
                   v-else
@@ -487,7 +513,7 @@ async function onBatchSetCategory() {
                   :options="categoryOptions"
                   size="small"
                   filterable
-                  @update:value="onCategoryEditChange(row, $event)"
+                  @update:value="onCategoryChange(row, $event)"
                 />
               </template>
 
@@ -659,6 +685,44 @@ async function onBatchSetCategory() {
   :deep(.vxe-grid),
   :deep(.vxe-table) {
     width: 100%;
+  }
+
+  // 自定义 loading 遮罩（替代未注册的 vxe-loading 组件）
+  .grid-loading-mask {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(var(--lz-bg-card-rgb, 255 255 255), 0.72);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+  }
+
+  .grid-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .grid-loading-dot {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--lz-border-light);
+    border-top-color: var(--lz-primary-500);
+    border-radius: 50%;
+    animation: grid-spin 0.8s linear infinite;
+  }
+
+  .grid-loading-text {
+    font-size: 13px;
+    color: var(--lz-text-secondary);
+  }
+}
+
+@keyframes grid-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

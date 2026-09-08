@@ -201,17 +201,17 @@ export function useTransactionList() {
       return
     const before: Transaction = list.value[idx]!
     const optimistic: Transaction = { ...before, ...(patch as Partial<Transaction>) }
-    list.value.splice(idx, 1, optimistic)
+    // 必须用「新数组替换」而非 list.value.splice 原地改：
+    // vxe-grid 对 data 的 watcher 是浅监听（只比对引用），原地 splice 不触发它的
+    // handleDataChange，单元格显示态会一直读 vxe 内部的旧快照，导致「改了和没改一样」。
+    // 换成新引用后 gridOptions computed 重算、v-bind 重新下发，vxe 才重渲染拿到新值。
+    list.value = list.value.map(t => (t.id === id ? optimistic : t))
     try {
       const updated = await updateTransaction(id, patch)
-      const i2 = list.value.findIndex(t => t.id === id)
-      if (i2 >= 0)
-        list.value.splice(i2, 1, updated)
+      list.value = list.value.map(t => (t.id === id ? updated : t))
     }
     catch (err) {
-      const i2 = list.value.findIndex(t => t.id === id)
-      if (i2 >= 0)
-        list.value.splice(i2, 1, before)
+      list.value = list.value.map(t => (t.id === id ? before : t))
       throw err
     }
   }
