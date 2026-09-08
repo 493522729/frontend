@@ -8,8 +8,8 @@
  * 环图渲染出来是一个空圆环 + 空图例，看着像"加载失败"。
  * 所以 0 笔时直接换成「记第一笔」引导，把用户导向 Cmd+K 那条主路径。
  */
-import { NAlert, NButton, NSkeleton } from 'naive-ui'
 import { computed, onMounted } from 'vue'
+import { useBookStore } from '@/stores/modules/book'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { formatCents } from '@/utils/money'
 import { monthLabel, parseMonth } from '@/utils/temporal'
@@ -18,8 +18,9 @@ import StatCard from './components/StatCard.vue'
 import TrendLine from './components/TrendLine.vue'
 import { useDashboard } from './composables/useDashboard'
 
-const { overview, loading, error, load } = useDashboard()
+const { overview, totalNetAssets, loading, error, load } = useDashboard()
 const quickEntry = useQuickEntryStore()
+const book = useBookStore()
 
 onMounted(() => load())
 
@@ -62,12 +63,24 @@ function openQuickEntry(): void {
       </div>
 
       <!-- 资产净值：所有账户余额合计（PRD 8.1） -->
-      <div class="net-assets">
-        <span class="net-label">资产净值</span>
-        <NSkeleton v-if="loading" text width="120px" :height="26" />
-        <span v-else class="net-value">
-          {{ formatCents(overview?.netAssets ?? 0, { withSymbol: true }) }}
-        </span>
+      <div class="net-assets-group">
+        <div class="net-assets">
+          <span class="net-label">资产净值</span>
+          <NSkeleton v-if="loading" text width="120px" :height="26" />
+          <span v-else class="net-value">
+            {{ formatCents(overview?.netAssets ?? 0, { withSymbol: true }) }}
+          </span>
+        </div>
+
+        <!-- 总资产净值：跨账本合计，切账本不变化，方便对账 -->
+        <div class="net-assets">
+          <span class="net-label">总资产净值</span>
+          <NSkeleton v-if="loading" text width="120px" :height="26" />
+          <span v-else class="net-value">
+            {{ totalNetAssets == null ? '—' : formatCents(totalNetAssets, { withSymbol: true }) }}
+          </span>
+          <span v-show="!loading" class="net-sub">全部 {{ book.books.length }} 个账本</span>
+        </div>
       </div>
     </header>
 
@@ -166,6 +179,12 @@ function openQuickEntry(): void {
   margin: 0;
 }
 
+.net-assets-group {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .net-assets {
   display: flex;
   flex-direction: column;
@@ -189,6 +208,12 @@ function openQuickEntry(): void {
   font-weight: 600;
   color: var(--lz-text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+.net-sub {
+  font-size: 11px;
+  color: var(--lz-text-secondary);
+  opacity: 0.85;
 }
 
 .dash-error {
@@ -273,6 +298,12 @@ function openQuickEntry(): void {
 @media (max-width: 575px) {
   .stat-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  // 两张资产卡在窄屏下纵向堆叠，避免横向被挤到换行
+  .net-assets-group {
+    flex-direction: column;
+    gap: 8px;
   }
 }
 </style>

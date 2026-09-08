@@ -11,6 +11,7 @@
  */
 import { NSkeleton } from 'naive-ui'
 import { computed } from 'vue'
+import { useSettingsStore } from '@/stores/modules/settings'
 import { formatCents } from '@/utils/money'
 
 const props = withDefaults(defineProps<{
@@ -35,23 +36,35 @@ const props = withDefaults(defineProps<{
   loading: false,
 })
 
+const settings = useSettingsStore()
+
 const displayValue = computed(() =>
   props.text || formatCents(props.value ?? 0, { withSymbol: true }),
 )
 
-/** 主数值颜色 */
-const toneClass = computed(() => {
-  if (props.tone === 'income' || props.tone === 'expense' || props.tone === 'neutral')
-    return `is-${props.tone}`
-
-  // auto：结余为正绿、为负红、为零中性
+/**
+ * 主数值的「逻辑色调」：income / expense / neutral
+ * ────────────────────────────────────────────────
+ * tone 直接指定时取它；auto 模式按结余正负推（正=收入语义、负=支出语义）。
+ * 真正上色由 settings.toneFor 决定，从而尊重用户的「收入红/绿」偏好。
+ */
+const logicalTone = computed<('income' | 'expense' | 'neutral')>(() => {
+  if (props.tone === 'income')
+    return 'income'
+  if (props.tone === 'expense')
+    return 'expense'
+  if (props.tone === 'neutral')
+    return 'neutral'
   const v = props.value ?? 0
   if (v > 0)
-    return 'is-income'
+    return 'income'
   if (v < 0)
-    return 'is-expense'
-  return 'is-neutral'
+    return 'expense'
+  return 'neutral'
 })
+
+/** 主数值颜色：随「金额配色偏好」翻转 */
+const toneClass = computed(() => `tone-${settings.toneFor(logicalTone.value)}`)
 
 const hasMom = computed(() => props.mom != null)
 
@@ -71,14 +84,17 @@ const momText = computed(() => {
   return `${abs.toFixed(1)}%`
 })
 
-/** 环比颜色：按「涨跌对我是好是坏」判断，不按涨跌本身 */
+/**
+ * 环比颜色：按「涨跌对我是好是坏」判断，不随收入红/绿偏好翻转
+ * （「好」永远用 success 色，与收支配色是两回事）
+ */
 const momClass = computed(() => {
   const m = props.mom
   if (m == null || m === 0)
-    return 'is-neutral'
+    return 'tone-neutral'
   const isUp = m > 0
   const isGood = props.momGoodWhen === 'up' ? isUp : !isUp
-  return isGood ? 'is-income' : 'is-expense'
+  return isGood ? 'tone-success' : 'tone-danger'
 })
 </script>
 
@@ -130,15 +146,15 @@ const momClass = computed(() => {
   font-variant-numeric: tabular-nums;
   color: var(--lz-text-primary);
 
-  &.is-income {
+  &.tone-success {
     color: var(--lz-success);
   }
 
-  &.is-expense {
+  &.tone-danger {
     color: var(--lz-danger);
   }
 
-  &.is-neutral {
+  &.tone-neutral {
     color: var(--lz-text-primary);
   }
 }
@@ -150,15 +166,15 @@ const momClass = computed(() => {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 
-  &.is-income {
+  &.tone-success {
     color: var(--lz-success);
   }
 
-  &.is-expense {
+  &.tone-danger {
     color: var(--lz-danger);
   }
 
-  &.is-neutral {
+  &.tone-neutral {
     color: var(--lz-text-secondary);
   }
 }
