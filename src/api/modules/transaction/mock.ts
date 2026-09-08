@@ -13,34 +13,15 @@
 import type { TransactionType } from '@/enums/transaction'
 import type {
   Account,
-  Category,
   Transaction,
   TransactionListParams,
   TransactionListResult,
 } from '@/types/transaction'
 import { BOOK_SEEDS } from '@/api/mock-books'
+// 分类种子与 CRUD 抽到 category/mock 统一维护；这里只取「已带 ID 的分类表」与 ID 序列起点
+import { initCategories, mockListCategories, peekNextCategoryId } from '@/api/modules/category/mock'
 
-// ── 字典：分类 ──────────────────────────────────────────
-const EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
-  { type: 'expense', name: '餐饮', icon: '🍜', color: '#FF7A6B', parentId: null },
-  { type: 'expense', name: '交通', icon: '🚇', color: '#5BA9FF', parentId: null },
-  { type: 'expense', name: '购物', icon: '🛍️', color: '#FF9F45', parentId: null },
-  { type: 'expense', name: '居家', icon: '🏠', color: '#A78BFA', parentId: null },
-  { type: 'expense', name: '娱乐', icon: '🎮', color: '#3CC6BC', parentId: null },
-  { type: 'expense', name: '医疗', icon: '💊', color: '#F87171', parentId: null },
-  { type: 'expense', name: '学习', icon: '📚', color: '#60A5FA', parentId: null },
-  { type: 'expense', name: '通讯', icon: '📱', color: '#818CF8', parentId: null },
-  { type: 'expense', name: '其他', icon: '📦', color: '#94A3B8', parentId: null },
-]
-const INCOME_CATEGORIES: Omit<Category, 'id'>[] = [
-  { type: 'income', name: '工资', icon: '💼', color: '#22C55E', parentId: null },
-  { type: 'income', name: '奖金', icon: '🎁', color: '#10A6B0', parentId: null },
-  { type: 'income', name: '理财', icon: '📈', color: '#0EA5E9', parentId: null },
-  { type: 'income', name: '兼职', icon: '💻', color: '#84CC16', parentId: null },
-  { type: 'income', name: '其他', icon: '💰', color: '#94A3B8', parentId: null },
-]
-
-// ── 字典：账户 ──────────────────────────────────────────
+// ── 字典：账户（分类种子见 @/api/modules/category/mock，此处不再重复） ──
 const ACCOUNT_TEMPLATES: Omit<Account, 'id' | 'bookId'>[] = [
   { name: '招商储蓄卡', type: 'debit', icon: '🏦', initBalance: 5000000, creditLimit: 0 },
   { name: '支付宝', type: 'alipay', icon: '💙', initBalance: 200000, creditLimit: 0 },
@@ -75,18 +56,16 @@ const NOTE_POOLS: Record<string, string[]> = {
 }
 
 // ── 字典初始化（带 ID） ────────────────────────────────
-const _categories: Category[] = []
 const _accounts: Account[] = []
 let _transactions: Transaction[] = []
 
 function init() {
-  if (_categories.length > 0)
+  if (_accounts.length > 0)
     return
-  let id = 1
-  for (const c of EXPENSE_CATEGORIES)
-    _categories.push({ ...c, id: id++ })
-  for (const c of INCOME_CATEGORIES)
-    _categories.push({ ...c, id: id++ })
+  // 分类种子在 category/mock 里初始化，并独占 1..N 的 ID 段；
+  // 账户从这里接着排，保证两类字典 ID 全局不冲突。
+  initCategories()
+  let id = peekNextCategoryId()
   // 账户按账本**各实例化一份**：每个账本有自己独立的账户，ID 全局唯一。
   // 「装修账本的招商卡」和「日常账本的招商卡」是两条不同记录，余额互不相干。
   for (const seed of BOOK_SEEDS) {
@@ -105,8 +84,8 @@ function generateTransactions() {
   const now = Date.now()
   const day = 24 * 3600 * 1000
 
-  const expenseCats = _categories.filter(c => c.type === 'expense')
-  const incomeCats = _categories.filter(c => c.type === 'income')
+  const expenseCats = mockListCategories().filter(c => c.type === 'expense')
+  const incomeCats = mockListCategories().filter(c => c.type === 'income')
 
   let nextId = 1
 
@@ -200,11 +179,6 @@ generateTransactions()
 
 // ── 公共 API（被 src/api/modules/transaction/index.ts 包装） ──
 
-export function mockListCategories(): Category[] {
-  init()
-  return _categories
-}
-
 export function mockListAccounts(bookId?: number): Account[] {
   init()
   // 不传 = 全部账本（字典类用途）；传了 = 只给该账本下的账户。
@@ -245,7 +219,7 @@ export function mockListTransactions(params: TransactionListParams): Transaction
     filtered = filtered.filter(t => categoryIds.includes(t.categoryId))
   if (keyword && keyword.trim()) {
     const kw = keyword.trim().toLowerCase()
-    const catMap = new Map(_categories.map(c => [c.id, c.name]))
+    const catMap = new Map(mockListCategories().map(c => [c.id, c.name]))
     filtered = filtered.filter((t) => {
       if (t.note.toLowerCase().includes(kw))
         return true
@@ -283,6 +257,17 @@ export function mockBatchDeleteTransactions(ids: number[]): number {
   return before - _transactions.length
 }
 
+/**
+ * 撤销用的「恢复」：把刚删除的交易原样放回内存表（id 不变）
+ * —— 仅 mock 阶段支撑 5s 撤销 toast；真后端需要「软删除 + 回收站」接口，届时替换本函数即可。
+ */
+export function mockRestoreTransactions(rows: Transaction[]): void {
+  for (const r of rows) {
+    if (!_transactions.some(t => t.id === r.id))
+      _transactions.push(r)
+  }
+}
+
 export function mockBatchUpdateCategory(ids: number[], categoryId: number): number {
   let n = 0
   for (const t of _transactions) {
@@ -291,6 +276,33 @@ export function mockBatchUpdateCategory(ids: number[], categoryId: number): numb
       t.updatedAt = Date.now()
       n++
     }
+  }
+  return n
+}
+
+/**
+ * 分类删除/合并时的「交易迁移」：把某分类下的所有交易改挂到目标分类。
+ * 由分类管理页在删除前调用，避免在 category 模块里反向依赖 transaction。
+ * @returns 受影响交易条数
+ */
+export function mockReassignCategory(fromId: number, toId: number): number {
+  let n = 0
+  for (const t of _transactions) {
+    if (t.categoryId === fromId) {
+      t.categoryId = toId
+      t.updatedAt = Date.now()
+      n++
+    }
+  }
+  return n
+}
+
+/** 统计某分类被多少笔交易引用 —— 删除前用于提示「是否要迁移」 */
+export function mockCountCategoryUsage(id: number): number {
+  let n = 0
+  for (const t of _transactions) {
+    if (t.categoryId === id)
+      n++
   }
   return n
 }

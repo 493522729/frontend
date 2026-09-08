@@ -22,7 +22,8 @@ import {
   parseMonth,
   today,
 } from '@/utils/temporal'
-import { mockGetAllTransactions, mockListAccounts, mockListCategories } from '../transaction/mock'
+import { mockListCategories } from '../category/mock'
+import { mockGetAllTransactions, mockListAccounts } from '../transaction/mock'
 
 /** 环图取前 N 个分类，其余合并为「其他」 */
 const TOP_N = 6

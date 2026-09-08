@@ -7,7 +7,7 @@
  */
 import type { DashboardOverview, DashboardQuery } from '@/types/stats'
 import { MOCK_LATENCY, simulateLatency } from '@/api/mock-latency'
-import { mockGetDashboardOverview } from './mock'
+import { mockGetDashboardOverview, mockGetTotalNetAssets } from './mock'
 
 /**
  * 仪表盘总览：一次请求拿全 4 数据卡 + 环图 + 折线需要的全部数据
@@ -18,4 +18,18 @@ import { mockGetDashboardOverview } from './mock'
  */
 export function getDashboardOverview(query: DashboardQuery = {}): Promise<DashboardOverview> {
   return simulateLatency(mockGetDashboardOverview(query), MOCK_LATENCY.aggregate)
+}
+
+/**
+ * 全账本总资产净值（跨账本聚合，不随当前账本变化）
+ *
+ * 与 getDashboardOverview().netAssets 是不同视角：
+ *   - 那个是「我正在看的那一本」，切账本它就变
+ *   - 这个是「我全部的家底」，切账本它不动
+ *
+ * 切账本时不重新拉这份数据更省，但在仪表盘场景下调用方一致 load 就行，
+ * 后续真后端如果是独立接口再单独优化。
+ */
+export function getTotalNetAssets(): Promise<number> {
+  return simulateLatency(mockGetTotalNetAssets(), MOCK_LATENCY.aggregate)
 }

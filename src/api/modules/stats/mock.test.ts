@@ -8,8 +8,9 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { sumCents } from '@/utils/money'
+import { mockListBooks } from '../book/mock'
 import { mockGetAllTransactions, mockListAccounts } from '../transaction/mock'
-import { mockGetDashboardOverview } from './mock'
+import { mockGetDashboardOverview, mockGetTotalNetAssets } from './mock'
 
 /** 朴素重算：不复用被测代码的任何逻辑，独立实现一份用来对照 */
 function naiveSumByMonth(month: string, type: 'income' | 'expense' | 'transfer'): number {
@@ -121,5 +122,27 @@ describe('mockGetDashboardOverview —— 空状态', () => {
     expect(o.expense).toBe(0)
     expect(o.balance).toBe(0)
     expect(o.categories).toEqual([])
+  })
+})
+
+describe('mockGetTotalNetAssets —— 全账本总资产', () => {
+  it('总资产净值 = Σ所有账户期初 + Σ所有收入 - Σ所有支出（与单账本口径一致）', () => {
+    const total = mockGetTotalNetAssets()
+    const allTxns = mockGetAllTransactions()
+    const expected = sumCents(mockListAccounts().map(a => a.initBalance))
+      + sumCents(allTxns.filter(t => t.type === 'income').map(t => t.amount))
+      - sumCents(allTxns.filter(t => t.type === 'expense').map(t => t.amount))
+    expect(total).toBe(expected)
+  })
+
+  // 这条是「端到端」校验：总卡必须 = 各账本卡片加起来，
+  // 否则仪表盘上「总卡 vs 当前账本卡」会出现数据不一致的玄学问题。
+  it('总资产净值 = 各账本净值之和（与 mockGetDashboardOverview 聚合一致）', () => {
+    const total = mockGetTotalNetAssets()
+    const perBookTotal = mockListBooks().reduce(
+      (sum, b) => sum + mockGetDashboardOverview({ bookId: b.id }).netAssets,
+      0,
+    )
+    expect(total).toBe(perBookTotal)
   })
 })
