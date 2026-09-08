@@ -16,6 +16,15 @@ export interface LoginParams {
   password: string
 }
 
+/** 注册入参（PRD §15.1：注册成功自动登录，跳到首页） */
+export interface RegisterParams {
+  username: string
+  password: string
+  /** 重复密码，前端校验、后端兜底 */
+  confirmPassword: string
+  nickname?: string
+}
+
 /** 登录成功返回（后端会把两个 token 一起给前端） */
 export interface LoginResult {
   accessToken: string
@@ -32,6 +41,12 @@ export interface UserInfo {
   roles: string[]
 }
 
+/** 修改密码入参 */
+export interface ChangePasswordParams {
+  oldPassword: string
+  newPassword: string
+}
+
 /** 用户模块接口集合 */
 export const userApi = {
   /**
@@ -41,6 +56,21 @@ export const userApi = {
    */
   login(params: LoginParams) {
     return http.post<LoginResult>('/auth/login', params)
+  },
+
+  /** 注册（成功后自动登录，前端跳到首页） */
+  register(params: RegisterParams) {
+    return http.post<LoginResult>('/auth/register', params)
+  },
+
+  /** 修改密码（要求已登录） */
+  changePassword(params: ChangePasswordParams) {
+    return http.post<void>('/auth/change-password', params)
+  },
+
+  /** 退出登录（前端清 token，后端失效 refreshToken） */
+  logout() {
+    return http.post<void>('/auth/logout')
   },
 
   /** 获取当前登录用户信息 */

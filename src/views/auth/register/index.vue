@@ -1,29 +1,21 @@
 <script setup lang="ts">
 /**
- * 登录主页 —— 拼装入口
+ * 注册页 · 拼装入口
  * ====================================================================
- * - 左侧 BrandPanel（品牌 + 特性）
- * - 右侧 FormCard：Naive UI 的 n-tabs 切换「账号密码 / 微信扫码」
- * - 顶部右上角：暗色模式开关
- * - 响应式：< 992px 折叠为上下布局
+ * 复用登录页的 BrandPanel（保持品牌一致性），右侧表单换成注册表单。
+ * 移动端折叠规则和登录页保持一致（< 992px 上下布局）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/modules/app'
-import AccountPanel from './components/AccountPanel.vue'
-import BrandPanel from './components/BrandPanel.vue'
-import ScanPanel from './components/ScanPanel.vue'
-
-type TabKey = 'account' | 'scan'
+import BrandPanel from '@/views/auth/login/components/BrandPanel.vue'
+import RegisterPanel from './components/RegisterPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
 const app = useAppStore()
 
-/** 当前激活的 Tab，默认账号密码 */
-const activeTab = ref<TabKey>('account')
-
-/** 移动端检测：< 992 折叠为上下布局 */
+/** 移动端检测 */
 const isCompact = ref(false)
 function checkCompact() {
   isCompact.value = window.innerWidth < 992
@@ -33,26 +25,21 @@ onMounted(() => {
   window.addEventListener('resize', checkCompact)
 })
 
-/** 登录成功统一处理：跳到原目标或首页 */
-const redirectTarget = computed<string>(() => {
+/** 注册成功：跳到登录前的目标页或首页 */
+function onRegisterSuccess() {
   const r = route.query.redirect
-  return typeof r === 'string' && r !== '/' ? r : '/'
-})
-
-async function onLoginSuccess() {
-  await new Promise(r => setTimeout(r, 600)) // 让动画走完
-  router.replace(redirectTarget.value)
+  const target = typeof r === 'string' && r !== '/' ? r : '/'
+  router.replace(target)
 }
 
-/** 跳到注册页（保留 redirect 参数，注册成功能跳回来） */
-function onGoRegister() {
-  router.replace({ path: '/register', query: route.query })
+/** 切回登录页（保留原 redirect） */
+function onSwitchToLogin() {
+  router.replace({ path: '/login', query: route.query })
 }
 </script>
 
 <template>
   <div class="login-page" :class="{ 'is-compact': isCompact }">
-    <!-- 顶部右侧操作栏：暗色切换 -->
     <button
       class="theme-toggle"
       :title="app.isDark ? '切到亮色' : '切到暗色'"
@@ -68,49 +55,30 @@ function onGoRegister() {
       </svg>
     </button>
 
-    <!-- 分屏 -->
     <div class="split">
-      <!-- 左侧品牌 -->
       <section class="split-left">
         <BrandPanel />
       </section>
 
-      <!-- 右侧表单 -->
       <section class="split-right">
         <div class="form-card">
           <header class="form-head">
             <h2 class="form-title">
-              {{ activeTab === 'account' ? '欢迎回来' : '扫码登录' }}
+              创建账号
             </h2>
             <p class="form-sub">
-              {{ activeTab === 'account' ? '请使用您的账号继续' : '打开微信扫一扫即可登录' }}
+              注册成功后将自动登录，开始你的记账之旅
             </p>
           </header>
 
-          <!-- Naive UI Tabs：主题色统一走 primaryColor（晨雾蓝） -->
-          <n-tabs
-            v-model:value="activeTab"
-            type="segment"
-            animated
-            class="login-tabs"
-          >
-            <n-tab-pane name="account" tab="账号密码">
-              <AccountPanel @success="onLoginSuccess" />
-            </n-tab-pane>
-            <n-tab-pane name="scan" tab="微信扫码" display-directive="show">
-              <ScanPanel @success="onLoginSuccess" @switch-tab="activeTab = 'account'" />
-            </n-tab-pane>
-          </n-tabs>
+          <RegisterPanel
+            @success="onRegisterSuccess"
+            @switch-to-login="onSwitchToLogin"
+          />
 
-          <!-- 底部：服务条款 + 跳转注册 -->
           <footer class="form-foot">
-            <p class="foot-register">
-              还没有账号？<a class="foot-link" @click.prevent="onGoRegister">立即注册</a>
-            </p>
-            <p class="foot-terms">
-              登录即代表您同意 <a href="#terms" class="foot-link" @click.prevent>《服务条款》</a>
-              和 <a href="#privacy" class="foot-link" @click.prevent>《隐私协议》</a>
-            </p>
+            注册即代表您同意 <a href="#terms" class="foot-link" @click.prevent>《服务条款》</a>
+            和 <a href="#privacy" class="foot-link" @click.prevent>《隐私协议》</a>
           </footer>
         </div>
       </section>
@@ -119,6 +87,7 @@ function onGoRegister() {
 </template>
 
 <style scoped lang="scss">
+/* 复用登录页的样式 —— 与 login/index.vue 保持视觉一致 */
 .login-page {
   position: relative;
   width: 100%;
@@ -234,10 +203,6 @@ function onGoRegister() {
   letter-spacing: 0.02em;
 }
 
-.login-tabs {
-  margin-bottom: 24px;
-}
-
 .form-foot {
   margin-top: 24px;
   padding-top: 20px;
@@ -245,16 +210,6 @@ function onGoRegister() {
   text-align: center;
   font-size: 12px;
   color: var(--lz-text-placeholder);
-}
-
-.foot-register {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--lz-text-secondary);
-}
-
-.foot-terms {
-  margin: 0;
 }
 
 .foot-link {
@@ -266,7 +221,6 @@ function onGoRegister() {
   }
 }
 
-/* 响应式：< 992px 折叠 */
 @media (max-width: 992px) {
   .split {
     grid-template-columns: 1fr;

@@ -9,9 +9,9 @@
  */
 
 // 类型从 user.ts 复用 —— 这里只 export 类型，不重复定义
-import type { LoginParams, LoginResult, UserInfo } from '../user'
+import type { ChangePasswordParams, LoginParams, LoginResult, RegisterParams, UserInfo } from '../user'
 
-export type { LoginParams, LoginResult, UserInfo }
+export type { ChangePasswordParams, LoginParams, LoginResult, RegisterParams, UserInfo }
 
 /** 扫码会话状态 */
 export type ScanStatus = 'waiting' | 'scanned' | 'confirmed' | 'expired'
@@ -68,6 +68,57 @@ function mockAccountLogin(params: LoginParams): Promise<LoginResult> {
  */
 export function accountLogin(params: LoginParams): Promise<LoginResult> {
   return mockAccountLogin(params)
+}
+
+// ── 注册 ────────────────────────────────────────────────────────────
+
+/**
+ * 注册（mock：username 不可为 admin，password ≥ 6 位，确认密码一致）。
+ * 真接口实现：return http.post<LoginResult>('/auth/register', params)
+ */
+export function register(params: RegisterParams): Promise<LoginResult> {
+  return fakeDelay(800).then(() => {
+    if (!params.username || params.username.length < 3)
+      throw new Error('BUSINESS:2001:用户名至少 3 位')
+    if (params.password.length < 6)
+      throw new Error('BUSINESS:2002:密码至少 6 位')
+    if (params.password !== params.confirmPassword)
+      throw new Error('BUSINESS:2003:两次输入的密码不一致')
+    if (params.username === 'admin')
+      throw new Error('BUSINESS:2004:该用户名已注册')
+    return {
+      accessToken: `mock-at-${params.username}`,
+      refreshToken: `mock-rt-${params.username}`,
+    }
+  })
+}
+
+// ── 修改密码 / 退出登录 ─────────────────────────────────────────────
+
+export function changePassword(params: ChangePasswordParams): Promise<void> {
+  return fakeDelay(500).then(() => {
+    if (params.oldPassword.length < 1)
+      throw new Error('BUSINESS:2101:请输入当前密码')
+    if (params.newPassword.length < 6)
+      throw new Error('BUSINESS:2102:新密码至少 6 位')
+    if (params.oldPassword === params.newPassword)
+      throw new Error('BUSINESS:2103:新密码不能与旧密码相同')
+  })
+}
+
+export function logout(): Promise<void> {
+  return fakeDelay(200)
+}
+
+/** 获取当前登录用户信息（mock 固定返回一个开发账号） */
+export function fetchProfile(): Promise<UserInfo> {
+  return fakeDelay(200).then(() => ({
+    id: 1,
+    username: 'laozhao',
+    nickname: '老赵',
+    avatar: undefined,
+    roles: ['admin'],
+  }))
 }
 
 // ── 微信扫码登录 ────────────────────────────────────────────────────────

@@ -52,6 +52,30 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 注册页走 BlankLayout（与登录页同一布局，复用品牌区）
+  {
+    path: '/register',
+    component: () => import('@/layouts/blank/index.vue'),
+    meta: {
+      title: '注册',
+      hidden: true,
+      requiresAuth: false,
+      layout: 'blank',
+    },
+    children: [
+      {
+        path: '',
+        name: 'Register',
+        component: () => import('@/views/auth/register/index.vue'),
+        meta: {
+          title: '注册',
+          hidden: true,
+          requiresAuth: false,
+          layout: 'blank',
+        },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({

@@ -1,12 +1,23 @@
 <script setup lang="ts">
+import type { DropdownOption } from 'naive-ui'
+import { NDropdown, useMessage } from 'naive-ui'
+/**
+ * 顶栏：侧边栏折叠开关 + 账本切换器 + 主题切换 + 用户菜单
+ * Cmd/Ctrl+B 切换侧边栏（架构文档 4.2，useHotkey 落地后迁移过去）
+ *
+ * 用户菜单用 NDropdown 触发：显示昵称 + 退出登录 + 跳到设置（改密入口）。
+ * 退出登录清 token + 跳 /login（带 redirect 让登录后回到原页面）。
+ */
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/modules/app'
+import { useAuthStore } from '@/stores/modules/auth'
 import BookSwitcher from './BookSwitcher.vue'
 
-/**
- * 顶栏：侧边栏折叠开关 + 账本切换器 + 主题切换
- * Cmd/Ctrl+B 切换侧边栏（架构文档 4.2，useHotkey 落地后迁移过去）
- */
 const appStore = useAppStore()
+const auth = useAuthStore()
+const router = useRouter()
+const message = useMessage()
 
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
@@ -14,6 +25,41 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
     appStore.toggleSidebar()
   }
 })
+
+/** 顶栏头像：取昵称首字，无头像时显示首字占位 */
+const avatarText = computed(() => {
+  const nick = auth.userInfo?.nickname || auth.userInfo?.username || ''
+  return nick ? nick.charAt(0).toUpperCase() : '?'
+})
+const displayName = computed(() => auth.userInfo?.nickname || auth.userInfo?.username || '未登录')
+
+/** 下拉菜单选项 —— key 用 NDropdown 支持的类型 */
+const userMenuOptions: DropdownOption[] = [
+  { key: 'profile', label: '个人资料' },
+  { key: 'settings', label: '账号设置' },
+  { type: 'divider', key: 'd1' },
+  { key: 'logout', label: '退出登录' },
+]
+
+/**
+ * 选择菜单项。
+ * 注意：传参是 `(key, option)`，key 是 string | number —— 这里固定是字符串，
+ * 但 TS 类型需要断言；用 `as string` 即可，菜单 key 在 userMenuOptions 里写死。
+ */
+async function onUserMenuSelect(key: string | number) {
+  const k = key as string
+  if (k === 'settings') {
+    router.push('/settings')
+  }
+  else if (k === 'profile') {
+    message.info('个人资料页 v2 再做')
+  }
+  else if (k === 'logout') {
+    await auth.logout()
+    message.success('已退出登录')
+    router.replace({ path: '/login', query: { redirect: '/' } })
+  }
+}
 </script>
 
 <template>
@@ -53,6 +99,22 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor" />
         </svg>
       </button>
+
+      <!-- 用户下拉菜单：头像 + 昵称 + 退出 -->
+      <NDropdown
+        trigger="click"
+        :options="userMenuOptions"
+        placement="bottom-end"
+        @select="onUserMenuSelect"
+      >
+        <button class="user-chip" :title="displayName">
+          <span class="user-avatar">{{ avatarText }}</span>
+          <span class="user-name">{{ displayName }}</span>
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+          </svg>
+        </button>
+      </NDropdown>
     </div>
   </header>
 </template>
@@ -75,6 +137,12 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .icon-svg {
@@ -109,6 +177,65 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   &:focus-visible {
     outline: 2px solid var(--lz-primary-600);
     outline-offset: 2px;
+  }
+}
+
+// 用户胶囊：头像 + 昵称 + 箭头（架构文档 3.6 header 右侧操作区）
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  height: 36px;
+  border: 1px solid var(--lz-border-light);
+  border-radius: 999px;
+  background: var(--lz-bg-card);
+  color: var(--lz-text-regular);
+  cursor: pointer;
+  transition: all 200ms;
+
+  &:hover {
+    border-color: var(--lz-primary-500);
+    color: var(--lz-primary-600);
+    background: var(--lz-primary-50);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--lz-primary-600);
+    outline-offset: 2px;
+  }
+}
+
+.user-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--lz-primary-500), var(--lz-primary-700));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 500;
+  // 超过 120px 截断，避免长昵称把布局挤坏
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 窄屏隐藏昵称，只留头像
+@media (max-width: 768px) {
+  .user-name {
+    display: none;
+  }
+
+  .user-chip {
+    padding: 4px;
   }
 }
 </style>

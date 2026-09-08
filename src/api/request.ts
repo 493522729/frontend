@@ -97,7 +97,7 @@ function clearQueue(): void {
 /** 退出登录：清 token + 触发跳登录（如果应用层注册了 handler） */
 function doLogout(): void {
   if (getActivePinia())
-    useAuthStore().clearTokens()
+    useAuthStore().clearAuth()
   unauthorizedHandler?.()
 }
 
