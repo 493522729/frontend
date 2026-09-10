@@ -134,8 +134,24 @@ transaction → account → category
 
 **单测**：`api/modules/import/mock.test.ts`（23 例，覆盖金额 / 日期 / 方向 / 自动映射 / 分类建议 / 解析 / 去重 / 提交计数）。
 
+### US-009 周期账单自动待记（已交付）
+
+**流程**：模板配置（金额 / 分类 / 账户 / 起始日 / 类型 / 自动确认 / 启用）→ 每月派生待确认队列 → 一键确认 / 改 / 跳过。
+
+**关键实现**：
+- 待确认项是**派生**的：不落库，按「当前月 + 模板」现算；当月「已处理」（确认或驳回）用 `_resolved` 集合（key = `模板id|YYYY-MM`）记录，**天然防重复入账**（重复确认抛错）。
+- 确认：`mockConfirmRecurring` 写 Transaction（source='recurring'）+ 标记已处理；驳回：`mockDismissRecurring` 仅标记不写流水。
+- 自动确认：store 加载待确认队列时把 `willAutoConfirm` 项自动 `confirmRecurring` 入账再重取（mock 阶段近似；真接口应在月切换时触发）。
+- 周期账单**仅收入 / 支出**，排除 transfer（转账需两端账户，语义不适用）。
+- 账本隔离：`bookId` 贯穿；切账本换整批模板与待确认项（loadedBookId 守卫）。
+
+**文件清单**：
+`types/recurring.ts` ｜ `api/modules/recurring/{mock,index}.ts` ｜ `stores/modules/recurring.ts` ｜ `views/recurring/index.vue` ｜ `router/modules/recurring.ts` ｜ `layouts/default/Sidebar/index.vue`(calendar 图标)
+
+**单测**：`api/modules/recurring/mock.test.ts`（11 例：种子 / 派生不重不漏 / 确认写交易 / 重复确认抛错 / 驳回不写流水 / 账本隔离 / 自动确认标记 / 未来月不生成 / 停用不生成 / 删除后不再生成 / 覆盖生效）。
+
 ## 9. Next 队列（待办）
 
-- **US-009 周期账单自动待记**：选模板（金额 / 分类 / 账户 / 起始日）→ 每月生成待确认流水。
-- 体验补强：键盘导航 ↑↓/Enter/Esc、状态筛选（待确认 / 已记）、网络错误重试 toast（PRD §15.2.2 未完项）。
-- 已知毛刺：装修 / 旅行账本余额深度负数（全账本「负债 170 万」），待造数脚本修正。。
+- **体验补强（P1 收尾）**：键盘导航 ↑↓/Enter/Esc、状态筛选（待确认 / 已记）、网络错误重试 toast（PRD §15.2.2 未完项）。
+- 已知毛刺：装修 / 旅行账本余额深度负数（全账本「负债 170 万」），待造数脚本修正。
+- P2 候选（按需）：US-010 规则引擎、US-011 命令面板、US-012 智能洞察、US-013 移动端 PWA、US-014 可视化大屏。
