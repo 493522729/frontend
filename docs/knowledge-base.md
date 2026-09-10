@@ -91,12 +91,17 @@ transaction → account → category
 | 通用 | lint 18 处格式 | `pnpm lint:fix` 自动修复；曾误删 import | `useMessage` 等手工补回 |
 | 通用 | cwd 漂移 | 后台命令偶发 cwd 不在 frontend | 改用绝对路径 |
 | 搜索 | bash grep 静默空 | 沙箱 `bash grep` 对中文路径项目失效 | 一律用 Grep 工具 |
+| Mock | 装修/旅行账本净余额深度负数（-350 万 / -86 万） | 造数只铺账户期初 + 随机收支，漏了真实场景里「业主拨款 / 旅行预拨」这类一次性大额收入；装修 amountScale=8 把支出放大到 ~389 万 | `BookSeed.startupFunds: number[]`：装修 `[50,50,50]万`、旅行 `[50 万]`；生成时按「笔数均分到过去 24 个月」先 push income；stats 单测守护净余额绝对值 < 50 万 |
+| Mock | 测试用 `pnpm vitest run` 单跑 stats 文件 SIGTERM | vitest 5 默认多 worker 并发，stats 文件加载大数据池撞 OOM | 不必关心：用 `pnpm test` 跑全套时正常通过（91 秒）；单跑如遇 OOM 可加 `--no-isolate` |
 
 ---
 
-## 6. Mock 数据已知毛刺（未修，备忘）
+## 6. Mock 数据已知毛刺
 
-- 装修 / 旅行账本余额被刷成**深度负数**，全账本视角「负债 170 万」。属 seed 数据缺陷，不影响功能，待后续造数脚本修正。
+- ✅ **已修复**：装修 / 旅行账本余额**深度负数**（曾出现「负债 350 万 / 86 万」明显违反常识的数字）。
+  - **根因**：造数时只铺账户期初（~5 万）+ 随机收支（支出被 amountScale=8 放大到 ~389 万、收入仅 ~30 万），漏了真实场景里**业主拨款 / 旅行预拨**这类一次性大额收入。
+  - **修复**：`BookSeed.startupFunds: number[]` —— 装修 `[50, 50, 50] 万`、旅行 `[50 万]`；生成时按「笔数均分到过去 24 个月」先 push income，再走常规循环。
+  - **守卫**：`stats/mock.test.ts` 加 `装修/旅行账本净余额不应深度负数（绝对值 < 50 万元）` 用例（mock 是 deterministic，mulberry32 seed=42+bookId*7919，断言写死有效）。
 
 ---
 
