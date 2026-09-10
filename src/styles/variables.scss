@@ -76,6 +76,20 @@ $bp-2xl: 1600px;
   -webkit-line-clamp: $lines;
 }
 
+/// 通用过渡：只列【不改布局】的属性（架构文档 4.1 铁律 1）
+/// 禁止 `transition: all` —— 它会连带 width/height/margin/padding 一起动，触发重排。
+/// hover / 激活态一律走这个 mixin，时长与缓动默认取自 token，
+/// 因此自动继承 prefers-reduced-motion（tokens.css 里把 duration 降到 1ms）。
+@mixin transition-paint($dur: var(--lz-duration-base), $ease: var(--lz-ease-standard)) {
+  transition:
+    color $dur $ease,
+    background-color $dur $ease,
+    border-color $dur $ease,
+    box-shadow $dur $ease,
+    opacity $dur $ease,
+    transform $dur $ease;
+}
+
 /// 数字等宽：金额 / 日期 / 编号必用（财务表格专业感的关键）
 @mixin tabular {
   font-family: var(--lz-font-num);

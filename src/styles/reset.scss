@@ -40,6 +40,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Naive UI 表格单元格：同 vxe 的道理，列里直接渲染的日期 / 编号 / 金额要等宽
+   （见 styles/vxe.scss 里的同款兜底，两者成对维护） */
+.n-data-table-td,
+.n-data-table-th,
+.n-data-table-tr--expanded .n-data-table-td {
+  font-variant-numeric: tabular-nums;
+}
+
 /* 键盘可见性：默认只在 :focus-visible 时显示焦点环，鼠标点击不显示 */
 :focus-visible {
   outline: 2px solid var(--lz-primary-600);
@@ -60,6 +68,23 @@ body {
 
   &:focus {
     top: var(--lz-space-2);
+  }
+}
+
+/* 减弱动效兜底（架构文档 4.1 铁律 2）
+   tokens.css 把 --lz-duration-* 降到 1ms，只管得了【用 token 写的过渡】；
+   Naive UI 的弹窗 / 抽屉 / 下拉用的是组件内置时长，吃不到我们的变量，
+   所以这里再全局压一遍。动画仍然发生（不是 none），只是瞬间完成，
+   这样依赖 transitionend / Vue transition 钩子的逻辑不会被打断。
+   只降级时长，不降级功能。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }
 

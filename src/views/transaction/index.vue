@@ -77,6 +77,7 @@ const {
   restoreLastRemoved,
   batchSetCategory,
   confirmBatch,
+  exportCurrentView,
 } = useTransactionList()
 
 // 快速记账弹层的写操作（新增 / 撤销）完成后刷新列表：回第 1 页，保证所见即所得
@@ -329,6 +330,14 @@ function buildColumns(): ColDef[] {
 // 列配置只在初始化时读一次持久化状态（避免数据 reload 时反复重建列、打断用户拖拽）
 const initialColumns = buildColumns()
 
+/**
+ * 虚拟滚动阈值：单页超过这么多行才启用（架构 §438）
+ *
+ * 200 行以内 DOM 直出比虚拟滚动更轻——虚拟滚动要额外维护偏移量和渲染窗口，
+ * 行数少时是纯开销。默认值 50/100 都在这个阈值下，所以日常翻页走原生渲染。
+ */
+const VIRTUAL_SCROLL_GT = 200
+
 const gridOptions = computed<VxeGridOptions>(() => ({
   border: true,
   showOverflow: true,
@@ -353,7 +362,15 @@ const gridOptions = computed<VxeGridOptions>(() => ({
   // 改为模板里 `:data="list" :loading="loading"` 直接绑定，list 一重新赋值就立刻下发给 vxe。
   // 列定义走 buildColumns()：基准列叠加 localStorage 里持久化的「显隐/列宽/顺序」
   columns: initialColumns,
-  scrollY: { enabled: true },
+  // 纵向虚拟滚动（PRD §249：10w 行 60fps；架构 §438：单页 > 200 行走虚拟滚动）
+  //
+  // ⚠️ 必须显式给 gt，且不能再用已废弃的 scrollY：
+  //   vxe 4.21.5 的启用判定是 `gt > -1 && (gt === 0 || gt < 行数)`，
+  //   而 vxe 全局配置里**没有 gt 的默认值** —— 只写 `{ enabled: true }` 时 gt 是
+  //   undefined，`undefined > -1` 为 false，虚拟滚动永远不启用，
+  //   页面会把整页行全渲进 DOM（实测 pageSize=2000 → 4000 个 tr）。
+  //   这个坑很隐蔽：小数据量下页面照样正常，只有行数上去了才会卡。
+  virtualYConfig: { enabled: true, gt: VIRTUAL_SCROLL_GT },
   editConfig: {
     trigger: 'dblclick' as const,
     mode: 'cell' as const,
@@ -559,9 +576,9 @@ async function onConfirmBatch() {
   <div class="txn-page">
     <header class="txn-head">
       <div>
-        <h2 class="page-title">
+        <h1 class="page-title">
           交易流水
-        </h2>
+        </h1>
         <p class="page-subtitle">
           共 {{ total.toLocaleString() }} 笔 · 已选 {{ selectedIds.length }} 笔
         </p>
@@ -575,6 +592,10 @@ async function onConfirmBatch() {
           style="width: 96px"
           @update:value="onRowSizeChange"
         />
+        <!-- 导出当前筛选视图（PRD §15.2.2）；不依赖勾选，导出的是筛选结果全集 -->
+        <NButton size="small" quaternary :disabled="total === 0" @click="exportCurrentView">
+          导出 CSV
+        </NButton>
         <NButton :loading="loading" @click="reload">
           刷新
         </NButton>
@@ -644,9 +665,9 @@ async function onConfirmBatch() {
               <div class="empty-emoji">
                 {{ filterApplied ? '🔍' : '📒' }}
               </div>
-              <h3 class="empty-title">
+              <h2 class="empty-title">
                 {{ filterApplied ? '没有匹配的流水' : '还没有任何交易' }}
-              </h3>
+              </h2>
               <p class="empty-desc">
                 {{ filterApplied ? '试试调整或清空筛选条件' : '点击右下角快速记一笔，开始你的记账之旅' }}
               </p>
@@ -704,6 +725,7 @@ async function onConfirmBatch() {
                   v-else
                   :value="row.categoryId"
                   :options="categoryOptions"
+                  :input-props="{ 'aria-label': `修改第 ${(row as Transaction).id} 行的分类` }"
                   size="small"
                   filterable
                   @update:value="onCategoryChange(row, $event)"
@@ -805,7 +827,7 @@ async function onConfirmBatch() {
               :page="page"
               :page-size="pageSize"
               :item-count="total"
-              :page-sizes="[20, 50, 100]"
+              :page-sizes="[20, 50, 100, 200, 500]"
               show-size-picker
               show-quick-jumper
               @update:page="onPageChange"
@@ -867,7 +889,7 @@ async function onConfirmBatch() {
   border-radius: 10px;
   background: var(--lz-bg-card);
   border: 1px dashed var(--lz-border-light);
-  transition: all 0.2s;
+  @include transition-paint();
 
   &.active {
     border-color: var(--lz-primary-500);
@@ -985,7 +1007,7 @@ async function onConfirmBatch() {
 .transfer-arrow {
   margin: 0 2px;
   font-size: 12px;
-  color: var(--lz-text-tertiary, var(--lz-text-secondary));
+  color: var(--lz-text-secondary);
   user-select: none;
 }
 
@@ -994,7 +1016,7 @@ async function onConfirmBatch() {
   display: inline-block;
   min-width: 1em;
   font-size: 13px;
-  color: var(--lz-text-tertiary, var(--lz-text-secondary));
+  color: var(--lz-text-secondary);
   user-select: none;
 }
 
@@ -1037,8 +1059,8 @@ async function onConfirmBatch() {
   padding: 12px 16px;
   margin-bottom: 12px;
   border-radius: 10px;
-  background: var(--lz-danger-50, #fff1f0);
-  border: 1px solid var(--lz-danger-200, #ffccc7);
+  background: var(--lz-danger-bg);
+  border: 1px solid var(--lz-danger);
 
   .load-error-icon {
     font-size: 18px;

@@ -38,6 +38,12 @@
   --lz-bg-card: #ffffff;
   --lz-bg-hover: var(--lz-primary-50);
 
+  /* ─── 通道分量（供 rgb(var(--x) / α%) 用）─────────────────────
+     带透明度的颜色不能直接用 hex，必须拆成通道分量，
+     否则暗色模式下会锁死成亮色的白/蓝（真 bug：暗色下遮罩一片白） */
+  --lz-bg-card-rgb: 255 255 255;
+  --lz-primary-rgb: 59 135 206; /* = primary-500 #3b87ce */
+
   /* ─── 语义色（双轨：深色档走文字/描边，浅色档走填充）─────────
      本项目是记账不是股票，默认「收入绿 / 支出红」。
      设置项可切到 A 股习惯的「收入红 / 支出绿」，见 stores/modules/app.ts */
@@ -132,6 +138,11 @@ html.dark {
   --lz-bg-page: #12161f;
   --lz-bg-card: #1a1f2b;
   --lz-bg-hover: #222a37;
+
+  /* 通道分量随暗色切换：遮罩/半透明描绘边才不会锁死成亮色 */
+  --lz-bg-card-rgb: 26 31 43; /* = #1a1f2b */
+  --lz-primary-rgb: 95 165 222; /* = primary-500（暗色档）#5fa5de */
+  --lz-success-rgb: 34 197 94; /* = success（暗色档）#22c55e */
 
   --lz-success: #22c55e;
   --lz-success-bg: rgb(34 197 94 / 15%);

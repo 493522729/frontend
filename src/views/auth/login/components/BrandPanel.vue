@@ -325,7 +325,7 @@ const features: Feature[] = [
   align-items: flex-start;
   gap: 12px;
   padding: 8px 0;
-  transition: transform 250ms;
+  transition: transform var(--lz-duration-slow);
 }
 
 .feat:hover {
@@ -342,7 +342,7 @@ const features: Feature[] = [
   border: 1px solid rgba(82, 136, 255, 0.15);
   color: #5288ff;
   flex-shrink: 0;
-  transition: all 250ms;
+  @include transition-paint(var(--lz-duration-slow));
 
   :global(.dark) & {
     background: rgba(255, 255, 255, 0.04);

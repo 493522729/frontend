@@ -161,7 +161,7 @@ async function onUserMenuSelect(key: string | number) {
   color: var(--lz-text-regular);
   font-size: 18px;
   cursor: pointer;
-  transition: background-color 200ms, transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color var(--lz-duration-base), transform var(--lz-duration-base) var(--lz-ease-standard);
 
   &:hover {
     background: var(--lz-primary-50);
@@ -192,7 +192,7 @@ async function onUserMenuSelect(key: string | number) {
   background: var(--lz-bg-card);
   color: var(--lz-text-regular);
   cursor: pointer;
-  transition: all 200ms;
+  @include transition-paint();
 
   &:hover {
     border-color: var(--lz-primary-500);

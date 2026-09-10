@@ -165,11 +165,8 @@ const matrix = computed<boolean[][]>(() => {
   inset: 16px;
   width: calc(100% - 32px);
   height: calc(100% - 32px);
+  /* 暗色不写覆盖：--lz-text-primary 在 html.dark 下已是浅色（架构 3.4） */
   color: var(--lz-text-primary);
-
-  :global(.dark) & {
-    color: #ecf5ff;
-  }
 }
 
 .qrcode-center {

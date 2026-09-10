@@ -23,6 +23,7 @@ import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { downloadCsv, safeFilePart } from '@/utils/csv'
 import { formatCents } from '@/utils/money'
 import ReportBar from './components/ReportBar.vue'
 import ReportLine from './components/ReportLine.vue'
@@ -212,20 +213,14 @@ function exportCsv(): void {
     message.warning('当前区间没有可导出的数据')
     return
   }
-  // BOM 让 Excel 正确识别 UTF-8 中文
-  const lines = [
+  // 金额导出成「元」的纯数字：带 ¥ 或千分位的话 Excel 会当文本，没法直接求和。
+  // 转义 / BOM / \r\n 行分隔都交给 utils/csv.ts 统一处理（以前这里是裸 join，备注含逗号会串列）
+  const rows = [
     ['时间', '收入(元)', '支出(元)'],
     ...buckets.map(b => [b.label, (b.income / 100).toFixed(2), (b.expense / 100).toFixed(2)]),
     ['合计', ((result.value?.income ?? 0) / 100).toFixed(2), ((result.value?.expense ?? 0) / 100).toFixed(2)],
   ]
-  const csv = `\uFEFF${lines.map(r => r.join(',')).join('\n')}`
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `报表_${start.value}_${end.value}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadCsv(`报表_${safeFilePart(start.value)}_${safeFilePart(end.value)}.csv`, rows)
   message.success('已导出当前视图 CSV')
 }
 </script>
@@ -234,9 +229,9 @@ function exportCsv(): void {
   <div class="report-page">
     <header class="page-header">
       <div class="heading">
-        <h2 class="page-title">
+        <h1 class="page-title">
           报表中心
-        </h2>
+        </h1>
         <p class="page-subtitle">
           {{ book.currentBook?.name ?? '当前账本' }} · 时间 × 分类 × 账户 交叉看收支
         </p>
@@ -355,9 +350,9 @@ function exportCsv(): void {
     <!-- 下钻明细 -->
     <section v-if="drill" class="card">
       <div class="drill-head">
-        <h3 class="card-title">
+        <h2 class="card-title">
           明细 · {{ drill.title }}
-        </h3>
+        </h2>
         <NButton size="tiny" quaternary @click="drill = null">
           收起
         </NButton>

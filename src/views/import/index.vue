@@ -89,9 +89,9 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
 
 <template>
   <div class="import-page">
-    <h2 class="page-title">
+    <h1 class="page-title">
       银行流水导入
-    </h2>
+    </h1>
 
     <div class="steps">
       <span :class="{ active: step === 'upload' }">1 上传</span>
@@ -264,7 +264,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
     border-radius: 6px;
     font-size: 13px;
     color: var(--lz-text-regular);
-    background: var(--lz-bg-elevated);
+    background: var(--lz-bg-card);
     border: 1px solid var(--lz-border);
 
     &.active {
@@ -288,7 +288,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   margin: 0 0 12px;
 
   &.warn {
-    color: var(--lz-warning-500);
+    color: var(--lz-warning);
   }
 }
 
@@ -310,7 +310,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   }
 
   .req {
-    color: var(--lz-danger-500);
+    color: var(--lz-danger);
     margin-left: 4px;
     font-style: normal;
   }
@@ -349,7 +349,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   th {
     position: sticky;
     top: 0;
-    background: var(--lz-bg-elevated);
+    background: var(--lz-bg-card);
     color: var(--lz-text-secondary);
     font-weight: 600;
   }
@@ -359,7 +359,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   }
 
   tr.dup {
-    background: var(--lz-warning-50);
+    background: var(--lz-warning-bg);
   }
 }
 </style>

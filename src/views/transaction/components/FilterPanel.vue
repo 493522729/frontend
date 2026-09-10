@@ -71,48 +71,56 @@ function reset() {
 <template>
   <aside class="filter-panel filter-area" aria-label="筛选条件">
     <header class="filter-head">
-      <h3 class="filter-title">
+      <h2 class="filter-title">
         筛选
-      </h3>
+      </h2>
       <NButton quaternary size="tiny" @click="reset">
         重置
       </NButton>
     </header>
 
     <div class="filter-body">
+      <!-- 无障碍：NDatePicker 不支持 input-props，用 label 包裹做隐式关联；
+           NSelect / NInput 走 :input-props 直接给内部 input 加 aria-label（axe：控件必须有可访问名称） -->
       <div class="field">
-        <label class="field-label">日期区间</label>
-        <NDatePicker
-          v-model:formatted-value="startDate"
-          value-format="yyyy-MM-dd"
-          type="date"
-          placeholder="开始日期"
-          clearable
-        />
-        <NDatePicker
-          v-model:formatted-value="endDate"
-          value-format="yyyy-MM-dd"
-          type="date"
-          placeholder="结束日期"
-          clearable
-        />
+        <span class="field-label">日期区间</span>
+        <label class="date-box" aria-label="开始日期">
+          <NDatePicker
+            v-model:formatted-value="startDate"
+            value-format="yyyy-MM-dd"
+            type="date"
+            placeholder="开始日期"
+            clearable
+          />
+        </label>
+        <label class="date-box" aria-label="结束日期">
+          <NDatePicker
+            v-model:formatted-value="endDate"
+            value-format="yyyy-MM-dd"
+            type="date"
+            placeholder="结束日期"
+            clearable
+          />
+        </label>
       </div>
 
       <div class="field">
-        <label class="field-label">类型</label>
+        <span class="field-label">类型</span>
         <NSelect
           v-model:value="type"
           :options="typeOptions"
+          :input-props="{ 'aria-label': '类型筛选' }"
           placeholder="全部"
           clearable
         />
       </div>
 
       <div class="field">
-        <label class="field-label">账户</label>
+        <span class="field-label">账户</span>
         <NSelect
           v-model:value="accountIds"
           :options="accountOptions"
+          :input-props="{ 'aria-label': '账户筛选' }"
           multiple
           placeholder="全部账户"
           clearable
@@ -120,10 +128,11 @@ function reset() {
       </div>
 
       <div class="field">
-        <label class="field-label">分类</label>
+        <span class="field-label">分类</span>
         <NSelect
           v-model:value="categoryIds"
           :options="categoryOptions"
+          :input-props="{ 'aria-label': '分类筛选' }"
           multiple
           placeholder="全部分类"
           filterable
@@ -132,19 +141,21 @@ function reset() {
       </div>
 
       <div class="field">
-        <label class="field-label">关键词</label>
+        <span class="field-label">关键词</span>
         <NInput
           v-model:value="keyword"
+          :input-props="{ 'aria-label': '关键词搜索' }"
           placeholder="备注 / 分类名"
           clearable
         />
       </div>
 
       <div class="field">
-        <label class="field-label">状态</label>
+        <span class="field-label">状态</span>
         <NSelect
           v-model:value="status"
           :options="statusOptions"
+          :input-props="{ 'aria-label': '状态筛选' }"
           placeholder="全部"
           clearable
         />
@@ -196,5 +207,10 @@ function reset() {
   font-size: 12px;
   color: var(--lz-text-secondary);
   font-weight: 500;
+}
+
+/* label 包裹日期选择器做无障碍隐式关联：label 默认 inline，撑成块让 picker 满宽 */
+.date-box {
+  display: flex;
 }
 </style>

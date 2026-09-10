@@ -9,20 +9,7 @@
  */
 import type { Rule, RuleAction, RuleCondition, RuleField, RuleInput } from '@/types/rule'
 import type { Transaction } from '@/types/transaction'
-import {
-  NAlert,
-  NButton,
-  NCard,
-  NCheckbox,
-  NEmpty,
-  NInputNumber,
-  NSelect,
-  NSpace,
-  NTag,
-  NText,
-  useDialog,
-  useMessage,
-} from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { runRule } from '@/api/modules/rule'
 import { useBookStore } from '@/stores/modules/book'
@@ -249,7 +236,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
   <div class="rule-page">
     <header class="page-header">
       <div>
-        <h2>规则引擎</h2>
+        <h1>规则引擎</h1>
         <NText depth="3">
           满足条件自动改分类、加备注、加标签或弹通知 —— 保存交易时即时触发
         </NText>
@@ -472,7 +459,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
   align-items: flex-start;
 }
 .block-label {
-  color: var(--lz-text-3);
+  color: var(--lz-text-secondary);
   font-size: 12px;
   min-width: 90px;
   flex-shrink: 0;
@@ -486,12 +473,12 @@ const hasResult = computed(() => ruleStore.list.length > 0)
 .rule-card-foot {
   margin-top: 12px;
   padding-top: 8px;
-  border-top: 1px dashed var(--lz-divider, #eee);
+  border-top: 1px dashed var(--lz-border);
 }
 .form-label {
   display: block;
   font-size: 13px;
-  color: var(--lz-text-2);
+  color: var(--lz-text-regular);
   margin-bottom: 6px;
 }
 .form-section-head {

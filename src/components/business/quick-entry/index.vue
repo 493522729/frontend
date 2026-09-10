@@ -414,7 +414,7 @@ useEventListener(document, 'keydown', onKeydown)
     border-radius: var(--lz-radius-lg);
     background: transparent;
     color: var(--lz-text-regular);
-    transition: all 200ms var(--lz-ease-standard);
+    @include transition-paint();
 
     &.n-radio-button--checked {
       background: var(--lz-primary-600);
@@ -460,7 +460,7 @@ useEventListener(document, 'keydown', onKeydown)
   background: var(--lz-bg-page);
   border: 2px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
-  transition: all 200ms var(--lz-ease-standard);
+  @include transition-paint();
 
   &:focus-within {
     border-color: var(--lz-primary-600);
@@ -532,7 +532,7 @@ useEventListener(document, 'keydown', onKeydown)
 // 账户可用余额提示：弱化到辅助层级，不抢主输入框的注意力
 .field-hint {
   font-size: 12px;
-  color: var(--lz-text-tertiary, var(--lz-text-secondary));
+  color: var(--lz-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 

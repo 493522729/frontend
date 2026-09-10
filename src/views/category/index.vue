@@ -551,7 +551,7 @@ watch(() => form.type, () => {
   background: var(--lz-bg-card);
   font-size: 16px;
   cursor: pointer;
-  transition: all var(--lz-duration-base) var(--lz-ease-standard);
+  @include transition-paint();
 
   &:hover {
     border-color: var(--lz-primary-300);

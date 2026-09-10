@@ -9,6 +9,16 @@
  * 同优先级会被后者覆盖，所以暗色块用 html 前缀抬高一级，确保稳赢。
  */
 
+/* 数字等宽兜底（架构 3.2）
+   有些列没有自定义插槽，由 vxe 直接吐文本（典型：transDate 日期列），
+   拿不到页面级的 .money / .date-text，列内数字会参差。
+   在单元格层统一补等宽：只切 font-variant-numeric，不动字体族，中文观感不变。 */
+.vxe-cell,
+.vxe-header--column,
+.vxe-body--column {
+  font-variant-numeric: tabular-nums;
+}
+
 /* 亮色：表格内主色（复选框 / 排序高亮 / 拖拽线）用正文级晨雾蓝 */
 :root {
   --vxe-ui-font-primary-color: var(--lz-primary-600);

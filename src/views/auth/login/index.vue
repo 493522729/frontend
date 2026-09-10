@@ -146,7 +146,7 @@ function onGoRegister() {
   border-radius: 10px;
   color: var(--lz-text-regular);
   cursor: pointer;
-  transition: all 200ms;
+  @include transition-paint();
   box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.04);
 
   svg {
@@ -158,7 +158,7 @@ function onGoRegister() {
     border-color: var(--lz-primary-600);
     color: var(--lz-primary-600);
     transform: translateY(-1px);
-    box-shadow: 0 8px 24px -6px rgba(64, 158, 255, 0.3);
+    box-shadow: 0 8px 24px -6px rgb(var(--lz-primary-rgb) / 30%);
   }
 
   :global(html.dark) & {

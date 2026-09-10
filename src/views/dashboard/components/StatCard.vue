@@ -126,7 +126,7 @@ const momClass = computed(() => {
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
   box-shadow: var(--lz-shadow-sm);
-  transition: box-shadow 200ms var(--lz-ease-standard);
+  transition: box-shadow var(--lz-duration-base) var(--lz-ease-standard);
 
   &:hover {
     box-shadow: var(--lz-shadow-md);

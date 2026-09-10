@@ -207,7 +207,7 @@ function onKeydown(e: KeyboardEvent) {
   color: var(--lz-primary-600);
   text-decoration: none;
   font-weight: 500;
-  transition: color 160ms;
+  transition: color var(--lz-duration-base);
 
   &:hover {
     color: var(--lz-primary-700);

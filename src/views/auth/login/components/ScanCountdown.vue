@@ -120,7 +120,7 @@ onUnmounted(() => {
 }
 
 .ring-fg.warning {
-  color: var(--lz-warning-500, #e6a23c);
+  color: var(--lz-warning);
 }
 
 .countdown-num {

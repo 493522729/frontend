@@ -121,9 +121,9 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   <div class="asset-page">
     <header class="page-header">
       <div class="heading">
-        <h2 class="page-title">
+        <h1 class="page-title">
           资产趋势
-        </h2>
+        </h1>
         <p class="page-subtitle">
           {{ book.currentBook?.name ?? '当前账本' }} · 净资产怎么变的、钱都放在哪
         </p>
@@ -160,9 +160,9 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
 
     <!-- 净值曲线 -->
     <section class="card">
-      <h3 class="card-title">
+      <h2 class="card-title">
         净资产走势
-      </h3>
+      </h2>
       <NSkeleton v-if="loading" class="chart-skeleton" height="320px" />
       <NetWorthLine v-else :points="points" />
     </section>
@@ -170,17 +170,17 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
     <!-- 月度净增 + 账户构成 -->
     <section class="chart-grid">
       <div class="card">
-        <h3 class="card-title">
+        <h2 class="card-title">
           月度净增
-        </h3>
+        </h2>
         <NSkeleton v-if="loading" class="chart-skeleton" height="280px" />
         <MonthlyChangeBar v-else :points="points" />
       </div>
 
       <div class="card">
-        <h3 class="card-title">
+        <h2 class="card-title">
           账户构成
-        </h3>
+        </h2>
         <NSkeleton v-if="loading" class="chart-skeleton" height="280px" />
         <div v-else-if="isEmpty" class="card-empty">
           <span class="empty-icon" aria-hidden="true">🏦</span>

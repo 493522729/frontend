@@ -88,7 +88,7 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   cursor: pointer;
   z-index: var(--lz-z-overlay);
   box-shadow: var(--lz-shadow-lg);
-  transition: transform 200ms var(--lz-ease-standard), background-color 200ms;
+  transition: transform var(--lz-duration-base) var(--lz-ease-standard), background-color var(--lz-duration-base);
 
   &:hover {
     transform: scale(1.06);

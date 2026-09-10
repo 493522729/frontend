@@ -54,9 +54,9 @@ function openQuickEntry(): void {
   <div class="dashboard">
     <header class="dash-header">
       <div class="dash-heading">
-        <h2 class="page-title">
+        <h1 class="page-title">
           {{ monthText }} · 仪表盘
-        </h2>
+        </h1>
         <p class="page-subtitle">
           本月收支、分类占比与近半年趋势
         </p>
@@ -121,9 +121,9 @@ function openQuickEntry(): void {
     <!-- 环图 + 折线 -->
     <section class="chart-grid" aria-label="收支结构">
       <div class="chart-card">
-        <h3 class="chart-title">
+        <h2 class="chart-title">
           支出分类占比
-        </h3>
+        </h2>
 
         <NSkeleton v-if="loading" class="chart-skeleton" height="300px" />
 
@@ -142,9 +142,9 @@ function openQuickEntry(): void {
       </div>
 
       <div class="chart-card">
-        <h3 class="chart-title">
+        <h2 class="chart-title">
           近 6 月收支趋势
-        </h3>
+        </h2>
         <NSkeleton v-if="loading" class="chart-skeleton" height="300px" />
         <TrendLine v-else :points="overview?.trend ?? []" />
       </div>

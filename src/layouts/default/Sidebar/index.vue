@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
+import { useBelowLg } from '@/composables/useBelowLg'
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from '@/constants/app'
 import { useAppStore } from '@/stores/modules/app'
 
@@ -9,6 +10,12 @@ import { useAppStore } from '@/stores/modules/app'
 const appStore = useAppStore()
 const route = useRoute()
 const router = useRouter()
+
+// 架构 §3.5：md（768–991）侧边栏 → 图标条。
+// 「窄屏强制折叠」与「用户手动折叠」是两个来源，用 || 合成有效态 ——
+// 不写回 store，避免窄屏的自动折叠污染用户在桌面端保存的展开偏好。
+const belowLg = useBelowLg()
+const collapsed = computed(() => appStore.sidebarCollapsed || belowLg.value)
 
 // 菜单图标映射：key 来自 route.meta.icon，值为内联 SVG 路径
 // 不依赖 @iconify-json/mdi，避免当前 pnpm 信任策略阻塞
@@ -54,7 +61,7 @@ const menus = computed(() => {
 <template>
   <aside
     class="app-sidebar"
-    :style="{ width: appStore.sidebarCollapsed ? `${SIDEBAR_COLLAPSED_WIDTH}px` : `${SIDEBAR_WIDTH}px` }"
+    :style="{ width: collapsed ? `${SIDEBAR_COLLAPSED_WIDTH}px` : `${SIDEBAR_WIDTH}px` }"
   >
     <!-- Logo 区 -->
     <div class="sidebar-logo" :title="$route.meta.title">
@@ -67,7 +74,7 @@ const menus = computed(() => {
         </svg>
       </span>
       <Transition name="fade">
-        <span v-if="!appStore.sidebarCollapsed" class="logo-text">老赵财务中台</span>
+        <span v-if="!collapsed" class="logo-text">老赵财务中台</span>
       </Transition>
     </div>
 
@@ -87,7 +94,7 @@ const menus = computed(() => {
             <path :d="iconPath(item.meta.icon)" />
           </svg>
         </span>
-        <span v-if="!appStore.sidebarCollapsed" class="menu-title">{{ item.meta.title }}</span>
+        <span v-if="!collapsed" class="menu-title">{{ item.meta.title }}</span>
       </RouterLink>
     </n-scrollbar>
   </aside>
@@ -102,7 +109,7 @@ const menus = computed(() => {
   background: var(--lz-bg-card);
   border-right: 1px solid var(--lz-border);
   // 折叠动画是低频操作，此例允许 width 过渡（架构文档 4.1 的例外条款）
-  transition: width 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--lz-duration-slow) var(--lz-ease-standard);
 }
 
 .sidebar-logo {
@@ -156,7 +163,7 @@ const menus = computed(() => {
   color: var(--lz-text-regular);
   text-decoration: none;
   font-size: 14px;
-  transition: background-color 200ms, color 200ms;
+  transition: background-color var(--lz-duration-base), color var(--lz-duration-base);
 
   .menu-icon {
     display: grid;

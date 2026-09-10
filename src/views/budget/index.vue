@@ -38,8 +38,8 @@ onMounted(() => {
 // NProgress 把颜色写进 SVG stroke 属性，CSS 变量在属性里不生效，
 // 所以这里读 token 的**当前值**（暗色切换后 watch 会重新取）
 const toneColors = computed(() => ({
-  safe: readToken('--lz-success', '#16a34a'),
-  warning: readToken('--lz-warning', '#d97706'),
+  safe: readToken('--lz-success', '#15803d'),
+  warning: readToken('--lz-warning', '#b45309'),
   over: readToken('--lz-danger', '#dc2626'),
 }))
 
@@ -203,9 +203,9 @@ function remainingText(item: BudgetProgress): string {
   <div class="budget-page">
     <header class="page-header">
       <div class="heading">
-        <h2 class="page-title">
+        <h1 class="page-title">
           预算
-        </h2>
+        </h1>
         <p class="page-subtitle">
           {{ book.currentBook?.name ?? '当前账本' }} · 给分类设上限，超支提前知道
         </p>
@@ -229,9 +229,9 @@ function remainingText(item: BudgetProgress): string {
         <div class="total-title">
           <span class="total-icon">📊</span>
           <div>
-            <h3 class="total-name">
+            <h2 class="total-name">
               本月总预算
-            </h3>
+            </h2>
             <p class="total-hint">
               全部分类支出的总额度
             </p>
@@ -493,7 +493,7 @@ function remainingText(item: BudgetProgress): string {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: box-shadow 200ms var(--lz-ease-standard);
+  transition: box-shadow var(--lz-duration-base) var(--lz-ease-standard);
 
   &:hover {
     box-shadow: var(--lz-shadow-md);
@@ -552,7 +552,7 @@ function remainingText(item: BudgetProgress): string {
   justify-content: flex-end;
   gap: 4px;
   opacity: 0;
-  transition: opacity 200ms;
+  transition: opacity var(--lz-duration-base);
 }
 
 .add-card {
@@ -568,7 +568,7 @@ function remainingText(item: BudgetProgress): string {
   color: var(--lz-text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 200ms, color 200ms;
+  transition: border-color var(--lz-duration-base), color var(--lz-duration-base);
 
   &:hover {
     border-color: var(--lz-primary-400);

@@ -166,7 +166,7 @@ async function manualRefresh() {
   text-align: center;
   line-height: 1.6;
   letter-spacing: 0.01em;
-  transition: color 200ms;
+  transition: color var(--lz-duration-base);
 
   b {
     color: var(--lz-primary-600);
@@ -198,7 +198,7 @@ async function manualRefresh() {
   background: rgba(255, 255, 255, 0.92);
   border-radius: 999px;
   padding: 2px;
-  box-shadow: 0 4px 12px -4px rgba(64, 158, 255, 0.2);
+  box-shadow: 0 4px 12px -4px rgb(var(--lz-primary-rgb) / 20%);
   backdrop-filter: blur(8px);
 }
 
@@ -214,9 +214,9 @@ async function manualRefresh() {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(64, 158, 255, 0.6) 30%,
-    var(--lz-error, #f56c6c) 50%,
-    rgba(64, 158, 255, 0.6) 70%,
+    rgb(var(--lz-primary-rgb) / 60%) 30%,
+    var(--lz-danger) 50%,
+    rgb(var(--lz-primary-rgb) / 60%) 70%,
     transparent 100%
   );
   box-shadow: 0 0 12px rgba(245, 63, 63, 0.4);
@@ -259,10 +259,10 @@ async function manualRefresh() {
 }
 
 .overlay-scanned {
-  background: rgba(103, 194, 58, 0.92);
+  background: rgb(var(--lz-success-rgb) / 92%);
   color: #fff;
   backdrop-filter: blur(4px);
-  box-shadow: 0 0 0 4px rgba(103, 194, 58, 0.16);
+  box-shadow: 0 0 0 4px rgb(var(--lz-success-rgb) / 16%);
 
   svg {
     width: 48px;
@@ -277,7 +277,7 @@ async function manualRefresh() {
 }
 
 .overlay-confirmed {
-  background: linear-gradient(135deg, rgba(103, 194, 58, 0.96), rgba(64, 158, 255, 0.92));
+  background: linear-gradient(135deg, rgb(var(--lz-success-rgb) / 96%), rgb(var(--lz-primary-rgb) / 92%));
   color: #fff;
   font-size: 14px;
 
@@ -359,7 +359,7 @@ async function manualRefresh() {
   color: var(--lz-text-regular);
   font-size: 13px;
   cursor: pointer;
-  transition: all 200ms;
+  @include transition-paint();
 
   .refresh-icon {
     width: 14px;
@@ -376,7 +376,7 @@ async function manualRefresh() {
 /* 状态切换 transition */
 .scan-overlay-enter-active,
 .scan-overlay-leave-active {
-  transition: opacity 240ms, transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity var(--lz-duration-base), transform var(--lz-duration-base) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .scan-overlay-enter-from {
@@ -403,7 +403,7 @@ async function manualRefresh() {
   font-weight: 500;
   margin: 0 2px;
   cursor: pointer;
-  transition: color 160ms;
+  transition: color var(--lz-duration-base);
 
   &:hover {
     color: var(--lz-primary-700);

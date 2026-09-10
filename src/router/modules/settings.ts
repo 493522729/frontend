@@ -8,7 +8,7 @@ const settingsRoutes: RouteRecordRaw[] = [
     meta: {
       title: '设置',
       icon: 'settings',
-      order: 9,
+      order: 99,
       requiresAuth: true,
     },
   },

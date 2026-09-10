@@ -427,7 +427,7 @@ watch(() => book.currentBookId, () => accountStore.refresh())
 
 .summary-card__hint {
   font-size: 12px;
-  color: var(--lz-text-tertiary);
+  color: var(--lz-text-secondary);
 }
 
 // ── 账户卡片 ─────────────────────────────────────────────

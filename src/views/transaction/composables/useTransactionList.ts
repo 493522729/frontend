@@ -31,10 +31,11 @@ import {
   updateTransaction,
 } from '@/api/modules/transaction'
 import { withRetry } from '@/composables/useRetryable'
-import { TRANSACTION_TYPES } from '@/enums/transaction'
+import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META, TRANSACTION_TYPES } from '@/enums/transaction'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useRuleStore } from '@/stores/modules/rule'
+import { downloadCsv, safeFilePart } from '@/utils/csv'
 import { humanizeError } from '@/utils/errorHumanizer'
 
 export interface FilterState {
@@ -81,6 +82,15 @@ export function useTransactionList() {
   })
   const page = ref(1)
   const pageSize = ref(50)
+
+  /**
+   * URL 里 pageSize 的合法上限（与分页器最大档对齐）。
+   *
+   * 架构 §438 定的是「单页 > 200 行走 vxe 虚拟滚动」，分页器提供 200/500 档；
+   * URL 支持同值只是把「用户选过的每页条数」带进分享链接，与 page 对称。
+   * 上限卡 500 是防呆：手改 URL 塞个 10w 会一次拉全量，没必要拦在数据层之外。
+   */
+  const MAX_URL_PAGE_SIZE = 500
 
   // ── 多选 ──
   const selectedIds = ref<number[]>([])
@@ -133,6 +143,11 @@ export function useTransactionList() {
     filter.status = q.status === 'pending' || q.status === 'confirmed' ? q.status : 'all'
     const p = Number(q.page)
     page.value = Number.isInteger(p) && p > 0 ? p : 1
+    // 同 page 一样做安全降级；上限见 MAX_URL_PAGE_SIZE
+    const ps = Number(q.pageSize)
+    pageSize.value = Number.isInteger(ps) && ps > 0
+      ? Math.min(ps, MAX_URL_PAGE_SIZE)
+      : 50
   }
 
   /**
@@ -152,28 +167,39 @@ export function useTransactionList() {
       keyword: filter.keyword || undefined,
       status: filter.status !== 'all' ? filter.status : undefined,
       page: page.value > 1 ? String(page.value) : undefined,
+      // 只在非默认时写回，避免 URL 里挂一堆无意义的 pageSize=50
+      pageSize: pageSize.value !== 50 ? String(pageSize.value) : undefined,
     }
     void router.replace({ query: { ...route.query, ...patch } })
+  }
+
+  /**
+   * 组装查询参数（load 与 exportCurrentView 共用，避免两处各写一份、改筛选漏一处）
+   * 注意 keyword 等空值统一转 undefined：后端/mock 靠「字段不存在」判断「不筛选」，
+   * 传空字符串会被当成「匹配空串」。
+   */
+  function buildParams(page: number, pageSize: number) {
+    return {
+      // 账本隔离：所有流水查询都带当前账本，切账本即换一套数据
+      bookId: book.currentBookId,
+      startDate: filter.startDate || undefined,
+      endDate: filter.endDate || undefined,
+      types: filter.type ? [filter.type] : undefined,
+      accountIds: filter.accountIds.length ? filter.accountIds : undefined,
+      categoryIds: filter.categoryIds.length ? filter.categoryIds : undefined,
+      keyword: filter.keyword || undefined,
+      // 状态筛选：all 时不传，让 mock/后端走「不过滤」分支
+      status: filter.status !== 'all' ? filter.status : undefined,
+      page,
+      pageSize,
+    }
   }
 
   async function load() {
     loading.value = true
     loadError.value = null
     try {
-      const params = {
-        // 账本隔离：所有流水查询都带当前账本，切账本即换一套数据
-        bookId: book.currentBookId,
-        startDate: filter.startDate || undefined,
-        endDate: filter.endDate || undefined,
-        types: filter.type ? [filter.type] : undefined,
-        accountIds: filter.accountIds.length ? filter.accountIds : undefined,
-        categoryIds: filter.categoryIds.length ? filter.categoryIds : undefined,
-        keyword: filter.keyword || undefined,
-        // 状态筛选：all 时不传，让 mock/后端走「不过滤」分支
-        status: filter.status !== 'all' ? filter.status : undefined,
-        page: page.value,
-        pageSize: pageSize.value,
-      }
+      const params = buildParams(page.value, pageSize.value)
       // 网络异常自动重试 3 次（PRD 9.5）：withRetry 内部已做 2 次重试，
       // 仍失败才落到 catch，此时给用户一个带「重试」按钮的错误提示（PRD 9.2）。
       const result = await withRetry(() => listTransactions(params), { retries: 2, delay: 400 })
@@ -370,6 +396,56 @@ export function useTransactionList() {
     await load()
   }
 
+  /** 单次导出上限：超了就提示缩小范围，避免一次拉爆内存 / 卡住主线程 */
+  const EXPORT_MAX_ROWS = 100_000
+
+  /**
+   * 导出当前筛选视图的**全部**流水（PRD §15.2.2「导出 Excel/CSV：当前视图导出」）
+   *
+   * 三个口径决策：
+   * - 导出**筛选结果全集**而非当前页：用户点「导出」要的是筛出来的所有数据，
+   *   只导当前 50 条毫无意义；
+   * - 支出导成**负数**：Excel 里对金额列直接求和就是净额，不用再做一次减法；
+   * - 先 probe 一次总数（pageSize=1）再决定拉不拉，避免空结果 / 超大结果白跑一趟。
+   */
+  async function exportCurrentView() {
+    try {
+      const probe = await listTransactions(buildParams(1, 1))
+      if (probe.total === 0) {
+        message.warning('当前筛选没有可导出的数据')
+        return
+      }
+      if (probe.total > EXPORT_MAX_ROWS) {
+        message.warning(`当前筛选有 ${probe.total} 条，超过单次上限 ${EXPORT_MAX_ROWS} 条，请缩小筛选范围`)
+        return
+      }
+      const result = await listTransactions(buildParams(1, probe.total))
+      const rows = [
+        ['日期', '类型', '分类', '账户', '转入账户', '金额(元)', '状态', '来源', '备注'],
+        ...result.list.map(t => [
+          t.transDate,
+          TRANSACTION_TYPE_META[t.type].label,
+          dict.categoryMap.get(t.categoryId)?.name ?? '—',
+          dict.accountMap.get(t.accountId)?.name ?? '—',
+          // 非转账没有转入账户，留空比写「—」干净（Excel 里空单元格统计更准）
+          t.toAccountId == null ? '' : dict.accountMap.get(t.toAccountId)?.name ?? '—',
+          ((t.type === 'expense' ? -t.amount : t.amount) / 100).toFixed(2),
+          t.status === 'pending' ? '待确认' : '已记',
+          TRANSACTION_SOURCE_META[t.source]?.label ?? '',
+          t.note,
+        ]),
+      ]
+      const range = filter.startDate || filter.endDate
+        ? `${filter.startDate ?? '最早'}_${filter.endDate ?? '至今'}`
+        : '全部'
+      downloadCsv(`流水_${safeFilePart(range)}.csv`, rows)
+      message.success(`已导出 ${result.list.length} 条流水`)
+    }
+    catch (err) {
+      message.error(humanizeError(err).title)
+    }
+  }
+
   // ── 初始化：先定账本 → 再载字典（账户按账本过滤）→ 最后拉首屏 ──
   (async () => {
     await book.ensureLoaded()
@@ -417,5 +493,6 @@ export function useTransactionList() {
     restoreLastRemoved,
     batchSetCategory,
     confirmBatch,
+    exportCurrentView,
   }
 }
