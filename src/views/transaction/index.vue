@@ -76,6 +76,7 @@ const {
   removeBatch,
   restoreLastRemoved,
   batchSetCategory,
+  confirmBatch,
 } = useTransactionList()
 
 // 快速记账弹层的写操作（新增 / 撤销）完成后刷新列表：回第 1 页，保证所见即所得
@@ -101,12 +102,76 @@ onMounted(() => {
     gridResizeObserver = new ResizeObserver(syncGridHeight)
     gridResizeObserver.observe(gridHostRef.value)
   }
+  // ── 筛选快捷键（PRD §15.2.2 体验补强） ──────────────────────
+  //  设计：
+  //   - Cmd/Ctrl+K：聚焦关键词搜索框（filter-area 内第一个 NInput）
+  //   - 1 / 2 / 3：切「全部 / 待确认 / 已记」状态筛选
+  //   - Esc：清空筛选条件
+  //  让权原则（与表格键盘导航一致）：
+  //   - input/select/textarea/contentEditable 正在被输入时不接管（用户打字优先）
+  //   - 命令修饰键（Cmd/Ctrl）只拦截 K，其他命令组合（如 Cmd+R 刷新）放行
+  document.addEventListener('keydown', onShortcutKeydown)
 })
 
 onBeforeUnmount(() => {
   gridResizeObserver?.disconnect()
   gridResizeObserver = null
+  document.removeEventListener('keydown', onShortcutKeydown)
 })
+
+/**
+ * 文档级快捷键 handler：与 .grid-host 的 onGridKeydown 并存但分工不同
+ *  - onGridKeydown 处理表格内的 ↑↓/Enter/Esc
+ *  - onShortcutKeydown 处理 Cmd+K / 1/2/3 / 全局 Esc
+ */
+function onShortcutKeydown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  const tag = target?.tagName
+  const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable === true
+  // Cmd+K / Ctrl+K：聚焦关键词框
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    const kwInput = document.querySelector<HTMLInputElement>('.filter-area input')
+    kwInput?.focus()
+    kwInput?.select()
+    return
+  }
+  // 数字键 1/2/3 切状态：仅在非输入态生效
+  if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === '1') {
+      filter.status = 'all'
+      applyFilter({})
+      return
+    }
+    if (e.key === '2') {
+      filter.status = 'pending'
+      applyFilter({})
+      return
+    }
+    if (e.key === '3') {
+      filter.status = 'confirmed'
+      applyFilter({})
+      return
+    }
+  }
+  // Esc：清空筛选（非输入态，且筛选有内容时）
+  if (e.key === 'Escape' && !typing && hasActiveFilter(filter)) {
+    resetFilter()
+  }
+}
+
+/** 是否有任何生效的筛选条件（用于 Esc 清空判断） */
+function hasActiveFilter(f: typeof filter): boolean {
+  return !!(
+    f.keyword
+    || f.type
+    || f.status !== 'all'
+    || (f.categoryIds && f.categoryIds.length > 0)
+    || (f.accountIds && f.accountIds.length > 0)
+    || f.startDate
+    || f.endDate
+  )
+}
 
 const categoryOptions = computed(() => dict.categories.map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })))
 const batchCategoryId = ref<number | null>(null)
@@ -461,6 +526,30 @@ async function onBatchSetCategory() {
   }
 }
 
+/**
+ * 一键批量确认（US-002 体验补强）
+ * - 仅在「待确认」筛选下显示入口
+ * - 内部按 status 二次过滤：哪怕用户勾了已记行也不会被改
+ */
+async function onConfirmBatch() {
+  if (selectedIds.value.length === 0) {
+    message.warning('请先勾选要确认的流水')
+    return
+  }
+  const ids = list.value.filter(t => selectedIds.value.includes(t.id) && t.status === 'pending')
+  if (ids.length === 0) {
+    message.warning('所选行均已确认，无可操作流水')
+    return
+  }
+  try {
+    await confirmBatch()
+    message.success(`已确认 ${ids.length} 笔流水`)
+  }
+  catch {
+    message.error('批量确认失败')
+  }
+}
+
 // ── 插槽参数类型化：vxe-table 内置插槽类型只覆盖官方 slot，自定义 slot 需要显式断言 row ──
 // 注：defineSlots 在 vxe-table 上工作不好（vxe-table 的内置 slots 类型不全）
 // 这里保留 `(row as Transaction)` —— TS 已知 data 是 Transaction[]，运行时安全
@@ -515,6 +604,9 @@ async function onBatchSetCategory() {
             />
             <NButton size="small" type="primary" @click="onBatchSetCategory">
               应用
+            </NButton>
+            <NButton size="small" type="warning" @click="onConfirmBatch">
+              批量确认
             </NButton>
             <NButton size="small" type="error" @click="onBatchDelete">
               删除

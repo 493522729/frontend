@@ -69,7 +69,7 @@ function reset() {
 </script>
 
 <template>
-  <aside class="filter-panel" aria-label="筛选条件">
+  <aside class="filter-panel filter-area" aria-label="筛选条件">
     <header class="filter-head">
       <h3 class="filter-title">
         筛选

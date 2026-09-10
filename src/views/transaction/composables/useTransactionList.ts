@@ -24,6 +24,7 @@ import { applyRulesToTransaction } from '@/api/modules/rule'
 import {
   batchDeleteTransactions,
   batchUpdateCategory,
+  batchUpdateStatus,
   deleteTransaction,
   listTransactions,
   restoreTransactions,
@@ -227,7 +228,7 @@ export function useTransactionList() {
   // 筛选变化自动 reload（防抖 250ms）
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   watch(
-    () => [filter.startDate, filter.endDate, filter.type, filter.accountIds.length, filter.categoryIds.length, filter.keyword],
+    () => [filter.startDate, filter.endDate, filter.type, filter.accountIds.length, filter.categoryIds.length, filter.keyword, filter.status],
     () => {
       page.value = 1
       syncToQuery()
@@ -353,6 +354,22 @@ export function useTransactionList() {
     await load()
   }
 
+  /**
+   * 批量确认入账（US-002 体验补强）：
+   * 把选中的「待确认」流水一次性置为 confirmed。
+   * - 走 batchUpdateStatus 而不是循环 updateTransaction：mock 是单次 simulateLatency，循环会让用户等多秒；
+   * - 用批量接口让 mock 端只发一次「修改内存表」的循环（与 batchUpdateCategory 同一档性能）；
+   * - 改完 reload 重取，「待确认」筛选下被改的行会从当前视图消失，体验上「点了就消失」。
+   */
+  async function confirmBatch() {
+    const ids = list.value.filter(t => selectedIds.value.includes(t.id) && t.status === 'pending').map(t => t.id)
+    if (ids.length === 0)
+      return
+    await batchUpdateStatus(ids, 'confirmed')
+    selectedIds.value = []
+    await load()
+  }
+
   // ── 初始化：先定账本 → 再载字典（账户按账本过滤）→ 最后拉首屏 ──
   (async () => {
     await book.ensureLoaded()
@@ -399,5 +416,6 @@ export function useTransactionList() {
     removeBatch,
     restoreLastRemoved,
     batchSetCategory,
+    confirmBatch,
   }
 }
