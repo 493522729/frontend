@@ -259,4 +259,19 @@ describe('mockGetNetWorthTrend —— 资产趋势（P1）', () => {
     expect(long.points[0]!.month < short.points[0]!.month).toBe(true)
     expect(long.points).toContainEqual(short.points.at(-1))
   })
+
+  // 数据合理性：装修/旅行账本的净余额不应深度负数（避免「负债 350 万」这种违反常识的数字）
+  // mock 是 deterministic（mulberry32 seed=42 + bookId*7919），所以阈值可以写死。
+  // 阈值 = 50 万元 = 5_000_000 分：留足 buffer，专注捕获「整体分布错位」类回归。
+  it('装修/旅行账本净余额不应深度负数（绝对值 < 50 万元）', () => {
+    const RENOVATION_OR_TRAVEL_MAX_ABS_YUAN = 50 // 单位万元
+    const MAX_ABS_CENTS = RENOVATION_OR_TRAVEL_MAX_ABS_YUAN * 10_000 * 100
+    for (const seed of BOOK_SEEDS.filter(s => s.type === 'renovation' || s.type === 'travel')) {
+      const netAssets = mockGetDashboardOverview({ bookId: seed.id }).netAssets
+      expect(
+        Math.abs(netAssets),
+        `bookId=${seed.id} (${seed.name}) 净余额 = ${(netAssets / 100).toLocaleString()} 元，疑似回归`,
+      ).toBeLessThan(MAX_ABS_CENTS)
+    }
+  })
 })

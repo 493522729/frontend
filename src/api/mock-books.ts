@@ -31,6 +31,18 @@ export interface BookSeed {
   amountScale: number
   /** 收入占比：装修/旅行几乎只有支出（0.12 = 12% 是收入） */
   incomeRatio: number
+  /**
+   * 启动资金（一次性大额收入，单位**元**）
+   *
+   * 模拟真实场景里这两类账本「先有钱再花钱」的逻辑：
+   *   - 装修：业主先拨款，再分批买材料（没有拨款就会出现「负债 350 万」的荒唐数字）
+   *   - 旅行：出行前一次性预算划拨
+   * 日常账本走正常发工资路径，不需要。
+   *
+   * 设计成「多笔而非一笔」：更贴近真实（装修分两期拨款/亲友借款），且防止「单笔超大」
+   * 让 stats 曲线在某一天出现断崖式跳变。日期按「最早」排（覆盖 24 个月时间窗的起点）。
+   */
+  startupFunds: number[]
 }
 
 /** 与 src/api/modules/transaction/mock.ts 的 ACCOUNT_TEMPLATES 顺序一致 */
@@ -53,6 +65,7 @@ export const BOOK_SEEDS: readonly BookSeed[] = [
     accountTemplateIndexes: [0, 1, 2, 3, 4],
     amountScale: 1,
     incomeRatio: 0.12,
+    startupFunds: [],
   },
   {
     id: 2,
@@ -65,6 +78,11 @@ export const BOOK_SEEDS: readonly BookSeed[] = [
     // 装修单笔几千起（瓷砖/家具），但别太夸张 —— 2500 笔要撑得住「一套房」的量级
     amountScale: 8,
     incomeRatio: 0.02,
+    // 三笔 50 万 = 150 万启动金，模拟「材料/软装/家电」三个拨款阶段，
+    // 让净余额（账户期初 + income - expense）接近持平：
+    //   已知随机收支差 ≈ -143 万 → startup 150 万 → 净 ≈ +5 万（合理）。
+    // 多笔避免曲线在单日跳变；日期均分到过去 24 个月。
+    startupFunds: [500000, 500000, 500000],
   },
   {
     id: 3,
@@ -77,6 +95,9 @@ export const BOOK_SEEDS: readonly BookSeed[] = [
     accountTemplateIndexes: [1, 3, 0],
     amountScale: 3,
     incomeRatio: 0.01,
+    // 单笔 50 万预拨覆盖 ~87.5 万支出 - 0.9 万小额收入 - 0.25 万账户初始 ≈ 36 万缺口。
+    // 旅行 cost 通常比预算低，但 mock 不预设这种关系；净负 30 万左右合理。
+    startupFunds: [500000],
   },
 ]
 

@@ -81,6 +81,40 @@ function generateTransactions() {
     const debitAccounts = mockListAccounts(seed.id).filter(a => a.type !== 'credit')
     const notePool = NOTE_POOLS[seed.type] ?? NOTE_POOLS.daily!
 
+    // 启动资金先入账：模拟「业主拨款 / 旅行预拨」，避免装修/旅行账本出现
+    // 「负债 350 万」这种明显违反常识的净值。
+    //  - 必须在常规循环之前 push —— 走「时间倒序」时它们自然排在最前。
+    //  - 日期均分到过去 24 个月内：避免「单日跳变」让资产曲线出现毛刺。
+    //  - 类型走 income，分类挑「工资/奖金/拨款」等收入分类，账户用储蓄卡。
+    if (seed.startupFunds.length > 0 && debitAccounts.length > 0 && incomeCats.length > 0) {
+      // 优先储蓄卡（更贴近「业主把钱打到储蓄卡」），没有再退化到第一个可用账户
+      const startupAccount = debitAccounts.find(a => a.type === 'debit') ?? debitAccounts[0]!
+      const startupCategory = incomeCats.find(c => c.name.includes('工资') || c.name.includes('奖金'))
+        ?? incomeCats[0]!
+      // 金额按笔数均分到 24 个月内：每笔用「最远时间」+ 等距间隔，曲线不会单日跳变
+      const totalFunds = seed.startupFunds.length
+      for (let k = 0; k < totalFunds; k++) {
+        const daysAgo = 730 - Math.floor((730 * (k + 1)) / (totalFunds + 1))
+        const dateStr = new Date(now - daysAgo * day).toISOString().slice(0, 10)
+        _transactions.push({
+          id: nextId++,
+          bookId: seed.id,
+          type: 'income',
+          amount: seed.startupFunds[k]! * 100, // 元 → 分
+          currency: 'CNY',
+          accountId: startupAccount.id,
+          toAccountId: null,
+          categoryId: startupCategory.id,
+          transDate: dateStr,
+          note: seed.type === 'renovation' ? '装修启动金' : '旅行预拨',
+          source: 'manual',
+          status: 'confirmed',
+          createdAt: now - daysAgo * day,
+          updatedAt: now - daysAgo * day,
+        })
+      }
+    }
+
     for (let i = 0; i < seed.txnCount; i++) {
       // 类型分布：收入占比按账本配置（装修/旅行几乎只有支出），余下里 3% 是转账
       const r = rand()
