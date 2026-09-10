@@ -15,8 +15,10 @@ import type { TransactionType } from '@/enums/transaction'
  * 调用方解构时 Vue 自动 unwrap（运行时通过 Proxy 实现）。这是 Vue 3
  * setup-style composable 的标准模式。
  */
-import type { Transaction } from '@/types/transaction'
-import { reactive, ref, watch } from 'vue'
+import type { Transaction, TransactionStatus } from '@/types/transaction'
+import type { HumanizedError } from '@/utils/errorHumanizer'
+import { NButton, useMessage, useNotification } from 'naive-ui'
+import { h, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   batchDeleteTransactions,
@@ -26,9 +28,11 @@ import {
   restoreTransactions,
   updateTransaction,
 } from '@/api/modules/transaction'
+import { withRetry } from '@/composables/useRetryable'
 import { TRANSACTION_TYPES } from '@/enums/transaction'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
+import { humanizeError } from '@/utils/errorHumanizer'
 
 export interface FilterState {
   // DatePicker 的 v-model:formatted-value 用 null 代表「未选」，传 '' 会被当成非法日期解析抛 Invalid time value
@@ -38,6 +42,8 @@ export interface FilterState {
   accountIds: number[]
   categoryIds: number[]
   keyword: string
+  /** 入账状态：all=全部 / pending=待确认 / confirmed=已记（PRD §15.2.2 状态筛选） */
+  status: 'all' | TransactionStatus
 }
 
 export function useTransactionList() {
@@ -50,6 +56,14 @@ export function useTransactionList() {
   const list = ref<Transaction[]>([])
   const total = ref(0)
   const loading = ref(false)
+  // 键盘导航当前高亮行索引（PRD §15.2.2：↑↓ 移焦点）；-1 表示无选中
+  const activeIndex = ref(-1)
+  // 加载失败后的可读错误（供页面渲染错误条 / 重试按钮读取）
+  const loadError = ref<HumanizedError | null>(null)
+
+  // 这两个实例必须在 setup 阶段取（composable 由页面 setup 内调用），否则拿不到 app 上下文
+  const message = useMessage()
+  const notification = useNotification()
 
   // ── 筛选 + 分页 ──
   const filter = reactive<FilterState>({
@@ -59,6 +73,7 @@ export function useTransactionList() {
     accountIds: [],
     categoryIds: [],
     keyword: '',
+    status: 'all',
   })
   const page = ref(1)
   const pageSize = ref(50)
@@ -76,6 +91,7 @@ export function useTransactionList() {
     filter.accountIds = []
     filter.categoryIds = []
     filter.keyword = ''
+    filter.status = 'all'
     page.value = 1
     syncToQuery()
   }
@@ -110,6 +126,7 @@ export function useTransactionList() {
     filter.accountIds = ids(q.accounts)
     filter.categoryIds = ids(q.categories)
     filter.keyword = str(q.keyword) ?? ''
+    filter.status = q.status === 'pending' || q.status === 'confirmed' ? q.status : 'all'
     const p = Number(q.page)
     page.value = Number.isInteger(p) && p > 0 ? p : 1
   }
@@ -129,6 +146,7 @@ export function useTransactionList() {
       accounts: filter.accountIds.length > 0 ? filter.accountIds.join(',') : undefined,
       categories: filter.categoryIds.length > 0 ? filter.categoryIds.join(',') : undefined,
       keyword: filter.keyword || undefined,
+      status: filter.status !== 'all' ? filter.status : undefined,
       page: page.value > 1 ? String(page.value) : undefined,
     }
     void router.replace({ query: { ...route.query, ...patch } })
@@ -136,6 +154,7 @@ export function useTransactionList() {
 
   async function load() {
     loading.value = true
+    loadError.value = null
     try {
       const params = {
         // 账本隔离：所有流水查询都带当前账本，切账本即换一套数据
@@ -146,17 +165,42 @@ export function useTransactionList() {
         accountIds: filter.accountIds.length ? filter.accountIds : undefined,
         categoryIds: filter.categoryIds.length ? filter.categoryIds : undefined,
         keyword: filter.keyword || undefined,
+        // 状态筛选：all 时不传，让 mock/后端走「不过滤」分支
+        status: filter.status !== 'all' ? filter.status : undefined,
         page: page.value,
         pageSize: pageSize.value,
       }
-      const result = await listTransactions(params)
+      // 网络异常自动重试 3 次（PRD 9.5）：withRetry 内部已做 2 次重试，
+      // 仍失败才落到 catch，此时给用户一个带「重试」按钮的错误提示（PRD 9.2）。
+      const result = await withRetry(() => listTransactions(params), { retries: 2, delay: 400 })
       list.value = result.list
       total.value = result.total
       selectedIds.value = []
+      activeIndex.value = -1
+    }
+    catch (err) {
+      const he = humanizeError(err)
+      loadError.value = he
+      notifyLoadError(he)
     }
     finally {
       loading.value = false
     }
+  }
+
+  /** 加载失败时弹统一错误通知，并附「重试」按钮（点一下重新走 load） */
+  function notifyLoadError(he: HumanizedError) {
+    notification.error({
+      title: he.title,
+      content: he.detail ?? '请稍后重试',
+      // duration:0 不自动消失，逼用户处理（重试或关掉）
+      duration: 0,
+      action: () => h(NButton, {
+        size: 'tiny',
+        quaternary: true,
+        onClick: () => load(),
+      }, { default: () => '重试' }),
+    })
   }
 
   async function reload() {
@@ -213,6 +257,28 @@ export function useTransactionList() {
     catch (err) {
       list.value = list.value.map(t => (t.id === id ? before : t))
       throw err
+    }
+  }
+
+  /**
+   * 确认入账：把「待确认」流水转为「已记」（PRD §15.2.2 状态筛选的配套动作）。
+   * 乐观更新 + 回滚，与 saveRow 同策略。
+   */
+  async function confirmRow(id: number) {
+    const idx = list.value.findIndex(t => t.id === id)
+    if (idx < 0)
+      return
+    const before = list.value[idx]!
+    if (before.status === 'confirmed')
+      return
+    list.value = list.value.map(t => (t.id === id ? { ...t, status: 'confirmed' as const } : t))
+    try {
+      await updateTransaction(id, { status: 'confirmed' })
+      message.success('已确认入账')
+    }
+    catch {
+      list.value = list.value.map(t => (t.id === id ? before : t))
+      message.error('确认失败')
     }
   }
 
@@ -302,12 +368,16 @@ export function useTransactionList() {
     page,
     pageSize,
     selectedIds,
+    // 键盘导航当前高亮行 + 加载错误（供页面渲染错误条/重试）
+    activeIndex,
+    loadError,
     reload,
     reloadFromFirst,
     applyFilter,
     resetFilter,
     onPageChange,
     saveRow,
+    confirmRow,
     removeOne,
     removeBatch,
     restoreLastRemoved,

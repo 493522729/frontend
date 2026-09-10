@@ -153,6 +153,8 @@ export function mockConfirmRecurring(options: ConfirmRecurringOptions) {
     transDate: options.transDate ?? dueDateOf(t),
     note: options.note ?? t.note,
     source: 'recurring',
+    // 周期账单确认即视为已记（区别于导入待复核）
+    status: 'confirmed',
   })
   _resolved.add(key)
   return txn

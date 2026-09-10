@@ -47,6 +47,13 @@ const type = field('type')
 const accountIds = field('accountIds')
 const categoryIds = field('categoryIds')
 const keyword = field('keyword')
+const status = field('status')
+
+const statusOptions = [
+  { label: '全部', value: 'all' },
+  { label: '待确认', value: 'pending' },
+  { label: '已记', value: 'confirmed' },
+]
 
 const typeOptions = TRANSACTION_TYPES.map(value => ({
   label: TRANSACTION_TYPE_META[value].label,
@@ -129,6 +136,16 @@ function reset() {
         <NInput
           v-model:value="keyword"
           placeholder="备注 / 分类名"
+          clearable
+        />
+      </div>
+
+      <div class="field">
+        <label class="field-label">状态</label>
+        <NSelect
+          v-model:value="status"
+          :options="statusOptions"
+          placeholder="全部"
           clearable
         />
       </div>

@@ -61,6 +61,9 @@ const {
   selectedIds,
   page,
   pageSize,
+  // 键盘导航高亮行 + 加载错误（错误条/重试用）
+  activeIndex,
+  loadError,
   reload,
   reloadFromFirst,
   // FilterPanel 只 emit 意图，真正的筛选状态改动走 composable 这两个方法
@@ -68,6 +71,7 @@ const {
   resetFilter,
   onPageChange,
   saveRow,
+  confirmRow,
   removeOne,
   removeBatch,
   restoreLastRemoved,
@@ -117,6 +121,7 @@ const filterApplied = computed(() => {
     || (f.accountIds && f.accountIds.length > 0)
     || f.startDate
     || f.endDate
+    || (f.status && f.status !== 'all')
   )
 })
 
@@ -284,7 +289,15 @@ const gridOptions = computed<VxeGridOptions>(() => ({
   // 列定义走 buildColumns()：基准列叠加 localStorage 里持久化的「显隐/列宽/顺序」
   columns: initialColumns,
   scrollY: { enabled: true },
-  editConfig: { trigger: 'dblclick' as const, mode: 'cell' as const, showStatus: true },
+  editConfig: {
+    trigger: 'dblclick' as const,
+    mode: 'cell' as const,
+    showStatus: true,
+    // Esc 原生取消编辑；但自定义键盘导航仍监听同一事件，需 stopPropagation 避免双重处理
+    escToCancel: true,
+  },
+  // 键盘导航高亮：当前 activeIndex 对应的行加 .is-active-row（见 onGridKeydown）
+  rowClassName: ({ rowIndex }: { rowIndex: number }) => (rowIndex === activeIndex.value ? 'is-active-row' : ''),
 }))
 
 // ── 行内编辑：vxe-table 关闭编辑时触发，回写并保存（金额 / 备注走这里） ──
@@ -299,6 +312,80 @@ async function onEditClosed(event: { row: Transaction, column: { field: string }
   catch {
     message.error('保存失败')
   }
+}
+
+// ── 键盘导航（PRD §15.2.2：↑↓ 移焦点 / Enter 编辑 / Esc 退出） ──
+// 依赖 vxe-grid 实例方法：scrollToRow 滚到某行、setEditCell 进入单元格编辑、clearEdit/isEdit 退出/判断编辑态。
+// gridRef 在模板里是 unknown，这里按需收紧成「只取用到的几个方法」，避免到处 any。
+function gridApi() {
+  return gridRef.value as {
+    scrollToRow?: (row: Transaction) => void
+    setEditCell?: (row: Transaction, field: string) => void
+    clearEdit?: () => void
+    // vxe-table 4.x 没有 isEdit()，用 getEditRecord() 判断是否处于编辑态
+    getEditRecord?: () => { row: Transaction } | null
+  } | null
+}
+
+/**
+ * 表格区键盘事件。
+ * 两个「让权」原则，避免和正常输入打架：
+ *   1) 正在编辑单元格（vxe getEditRecord 返回对象）→ Enter 提交、Esc 取消编辑并阻止冒泡；
+ *      方向键也别插手，留给输入框光标/选区移动。
+ *   2) 焦点在 input/select/textarea → 那是用户在打字，方向键留给光标移动。
+ *
+ * 踩坑：vxe-table 4.x 没有 isEdit()，之前误判为「非编辑态」，导致 Esc 只清 activeIndex
+ *       而不退出单元格编辑。修复：用 getEditRecord() 判断；同时 editConfig 开启 escToCancel。
+ */
+function onGridKeydown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  const tag = target?.tagName
+  const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable === true
+  const grid = gridApi()
+  const isEditing = !!grid?.getEditRecord?.()
+
+  if (isEditing) {
+    if (e.key === 'Escape') {
+      // 阻止事件继续传给 vxe 内部其他 handler（escToCancel 已开，这里只是兜底+同步状态）
+      e.preventDefault()
+      e.stopPropagation()
+      grid?.clearEdit?.()
+    }
+    return
+  }
+  if (typing || list.value.length === 0)
+    return
+
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    const dir = e.key === 'ArrowDown' ? 1 : -1
+    // 当前无高亮时，↓从首行开始、↑从末行开始，体验更顺
+    const base = activeIndex.value < 0 ? (dir > 0 ? -1 : list.value.length) : activeIndex.value
+    const next = Math.min(list.value.length - 1, Math.max(0, base + dir))
+    activeIndex.value = next
+    const row = list.value[next]
+    if (row)
+      grid?.scrollToRow?.(row)
+  }
+  else if (e.key === 'Enter') {
+    if (activeIndex.value < 0)
+      return
+    e.preventDefault()
+    const row = list.value[activeIndex.value]
+    if (row)
+      grid?.setEditCell?.(row, 'amount')
+  }
+  else if (e.key === 'Escape') {
+    if (activeIndex.value !== -1) {
+      e.preventDefault()
+      activeIndex.value = -1
+    }
+  }
+}
+
+/** 鼠标点单元格也同步高亮行，让鼠标 / 键盘两套交互状态一致 */
+function onCellClick(params: { rowIndex: number }) {
+  activeIndex.value = params.rowIndex
 }
 
 // ── 单删 / 批量 ──
@@ -442,7 +529,19 @@ async function onBatchSetCategory() {
         </div>
 
         <div class="table-wrap">
-          <div ref="gridHostRef" class="grid-host">
+          <!-- 加载失败统一错误条（PRD 9.2）：自动重试 3 次仍失败才出现，附手动重试按钮 -->
+          <div v-if="loadError" class="load-error" role="alert">
+            <span class="load-error-icon">⚠️</span>
+            <div class="load-error-text">
+              <strong>{{ loadError.title }}</strong>
+              <span v-if="loadError.detail"> · {{ loadError.detail }}</span>
+            </div>
+            <NButton size="small" type="primary" secondary @click="reload">
+              重试
+            </NButton>
+          </div>
+
+          <div ref="gridHostRef" class="grid-host" tabindex="0" @keydown="onGridKeydown">
             <!--
               空状态：数据加载完且无数据时显示。
               vxe-table 自带空态文案过于朴素，给一个带引导的友好版：
@@ -473,6 +572,7 @@ async function onBatchSetCategory() {
               @checkbox-change="(e: any) => selectedIds = e.records.map((r: Transaction) => r.id)"
               @checkbox-all="(e: any) => selectedIds = e.records.map((r: Transaction) => r.id)"
               @edit-closed="onEditClosed"
+              @cell-click="onCellClick"
               @custom="onColumnCustom"
               @resizable-change="onResizableChange"
             >
@@ -571,15 +671,33 @@ async function onBatchSetCategory() {
                 </span>
               </template>
 
-              <!-- 来源 -->
+              <!-- 来源 + 入账状态 -->
               <template #source_cell="{ row }">
                 <NTag size="small" :bordered="false" type="default">
                   {{ TRANSACTION_SOURCE_META[(row as Transaction).source].label }}
+                </NTag>
+                <NTag
+                  v-if="(row as Transaction).status === 'pending'"
+                  size="small"
+                  type="warning"
+                  :bordered="false"
+                  class="status-pending"
+                >
+                  待确认
                 </NTag>
               </template>
 
               <!-- 操作 -->
               <template #action_cell="{ row }">
+                <NButton
+                  v-if="(row as Transaction).status === 'pending'"
+                  text
+                  type="primary"
+                  size="tiny"
+                  @click="confirmRow(row.id)"
+                >
+                  确认
+                </NButton>
                 <NButton text type="error" size="tiny" @click="onDeleteOne(row.id)">
                   删除
                 </NButton>
@@ -801,6 +919,42 @@ async function onBatchSetCategory() {
   }
 
   &.tone-neutral {
+    color: var(--lz-text-secondary);
+  }
+}
+
+// 键盘导航高亮行（vxe 生成的 <tr> 不带本组件 scoped 属性，必须 :deep 才能命中）
+:deep(.is-active-row) {
+  background: var(--lz-primary-50) !important;
+}
+
+:deep(.is-active-row:hover) {
+  background: var(--lz-primary-100, var(--lz-primary-50)) !important;
+}
+
+// 待确认标签与来源标签之间的间距
+.status-pending {
+  margin-left: 6px;
+}
+
+// 加载失败统一错误条（PRD 9.2）
+.load-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: var(--lz-danger-50, #fff1f0);
+  border: 1px solid var(--lz-danger-200, #ffccc7);
+
+  .load-error-icon {
+    font-size: 18px;
+  }
+
+  .load-error-text {
+    flex: 1;
+    font-size: 13px;
     color: var(--lz-text-secondary);
   }
 }

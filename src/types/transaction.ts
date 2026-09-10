@@ -9,6 +9,9 @@
 import type { AccountType } from '@/enums/account'
 import type { TransactionSource, TransactionType } from '@/enums/transaction'
 
+/** 交易入账状态：待确认（导入/系统生成待用户复核）/ 已记（已确认入账） */
+export type TransactionStatus = 'pending' | 'confirmed'
+
 /** 单笔交易（前端视角） */
 export interface Transaction {
   id: number
@@ -32,6 +35,8 @@ export interface Transaction {
   note: string
   /** 来源 */
   source: TransactionSource
+  /** 入账状态；缺省视为已记（存量/手动数据无需复核） */
+  status?: TransactionStatus
   /** 创建时间戳（ms） */
   createdAt: number
   /** 更新时间戳（ms） */
@@ -49,6 +54,8 @@ export interface TransactionListParams {
   types?: TransactionType[]
   /** 模糊匹配备注 / 分类名 */
   keyword?: string
+  /** 入账状态筛选：pending=待确认 / confirmed=已记；不传=全部 */
+  status?: 'pending' | 'confirmed'
   /** 页码（1-based） */
   page: number
   /** 每页条数 */

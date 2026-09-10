@@ -152,6 +152,8 @@ function generateTransactions() {
         transDate: dateStr,
         note: notePool[Math.floor(rand() * notePool.length)]!,
         source: rand() < 0.85 ? 'manual' : rand() < 0.95 ? 'import' : 'recurring',
+        // 存量 mock 直接视为已记（无需用户复核）
+        status: 'confirmed',
         createdAt: now - daysAgo * day,
         updatedAt: now - daysAgo * day,
       })
@@ -177,7 +179,7 @@ export function mockGetAllTransactions(bookId?: number): readonly Transaction[] 
 
 export function mockListTransactions(params: TransactionListParams): TransactionListResult {
   generateTransactions()
-  const { bookId, startDate, endDate, categoryIds, accountIds, types, keyword, page, pageSize } = params
+  const { bookId, startDate, endDate, categoryIds, accountIds, types, keyword, status, page, pageSize } = params
 
   let filtered = _transactions
 
@@ -204,6 +206,10 @@ export function mockListTransactions(params: TransactionListParams): Transaction
       return !!catName && catName.toLowerCase().includes(kw)
     })
   }
+  // 入账状态筛选：pending=待确认 / confirmed=已记；未传=不过滤。
+  // 存量数据没有显式 status 字段，按「缺省即已记」对待，避免把老数据全过滤掉。
+  if (status)
+    filtered = filtered.filter(t => (t.status ?? 'confirmed') === status)
 
   // 默认按日期倒序
   filtered = [...filtered].sort((a, b) => b.transDate.localeCompare(a.transDate) || b.id - a.id)

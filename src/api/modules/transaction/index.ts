@@ -34,6 +34,13 @@ export { listCategories } from '@/api/modules/category'
 
 /** 分页查交易 */
 export function listTransactions(params: TransactionListParams): Promise<TransactionListResult> {
+  // ── 开发期故障注入（仅浏览器 + URL 带 ?chaos=1 时生效）──
+  // 用于演示「网络异常自动重试 3 次 + 失败统一 toast + 手动重试按钮」整条链路，
+  // 不依赖真实后端也能看到重试行为。Node / 测试环境（无 window）永远走正常分支，
+  // 因此不影响单测。删 mock 时连同本段一起删即可。
+  if (typeof window !== 'undefined' && window.location.search.includes('chaos')) {
+    return Promise.reject(new Error('网络连接失败，请检查网络后重试'))
+  }
   return simulateLatency(mockListTransactions(params), MOCK_LATENCY.list)
 }
 

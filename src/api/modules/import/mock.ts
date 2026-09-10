@@ -303,6 +303,8 @@ export function mockCommitImport(parsed: ParsedImportTxn[], options: CommitImpor
       transDate: p.date,
       note: p.remark || p.counterparty,
       source: 'import',
+      // 导入进来的流水先置「待确认」，用户在交易表复核确认后才转为已记
+      status: 'pending',
     })
     inserted++
   }

@@ -246,6 +246,7 @@ declare global {
   const useRafFn: typeof import('@vueuse/core').useRafFn
   const useRefHistory: typeof import('@vueuse/core').useRefHistory
   const useResizeObserver: typeof import('@vueuse/core').useResizeObserver
+  const useRetryable: typeof import('./composables/useRetryable').useRetryable
   const useRoute: typeof import('vue-router').useRoute
   const useRouter: typeof import('vue-router').useRouter
   const useSSRWidth: typeof import('@vueuse/core').useSSRWidth
@@ -315,6 +316,7 @@ declare global {
   const watchTriggerable: typeof import('@vueuse/core').watchTriggerable
   const watchWithFilter: typeof import('@vueuse/core').watchWithFilter
   const whenever: typeof import('@vueuse/core').whenever
+  const withRetry: typeof import('./composables/useRetryable').withRetry
 }
 // for type re-export
 declare global {
@@ -324,6 +326,9 @@ declare global {
   // @ts-ignore
   export type { BudgetAlert } from './composables/budgetAlert'
   import('./composables/budgetAlert')
+  // @ts-ignore
+  export type { RetryOptions, RetryableState } from './composables/useRetryable'
+  import('./composables/useRetryable')
 }
 
 // for vue template auto import
@@ -568,6 +573,7 @@ declare module 'vue' {
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>
+    readonly useRetryable: UnwrapRef<typeof import('./composables/useRetryable')['useRetryable']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('vue-router')['useRouter']>
     readonly useSSRWidth: UnwrapRef<typeof import('@vueuse/core')['useSSRWidth']>
@@ -637,5 +643,6 @@ declare module 'vue' {
     readonly watchTriggerable: UnwrapRef<typeof import('@vueuse/core')['watchTriggerable']>
     readonly watchWithFilter: UnwrapRef<typeof import('@vueuse/core')['watchWithFilter']>
     readonly whenever: UnwrapRef<typeof import('@vueuse/core')['whenever']>
+    readonly withRetry: UnwrapRef<typeof import('./composables/useRetryable')['withRetry']>
   }
 }
