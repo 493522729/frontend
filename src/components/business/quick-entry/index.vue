@@ -5,7 +5,9 @@ import type { Transaction } from '@/types/transaction'
 import { NButton, useMessage, useNotification } from 'naive-ui'
 import { h, nextTick, reactive, ref, watch } from 'vue'
 import { createTransaction, deleteTransaction } from '@/api/modules/transaction'
+import { budgetAlertAfterSave } from '@/composables/budgetAlert'
 import { TRANSACTION_TYPE_META, TRANSACTION_TYPES } from '@/enums/transaction'
+import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
@@ -29,6 +31,7 @@ import { formatDate, today } from '@/utils/temporal'
 const quickEntry = useQuickEntryStore()
 const dict = useDictStore()
 const book = useBookStore()
+const accountStore = useAccountStore()
 const message = useMessage()
 const notification = useNotification()
 
@@ -69,6 +72,28 @@ const previewText = computed(() => {
   return formatCents(cents, { withSymbol: true })
 })
 
+/**
+ * 转出账户的可用余额（支出 / 转账前给个底）
+ *
+ * 信用卡返回「剩余额度」而不是余额 —— 刷信用卡花的是额度，
+ * 显示余额（负数）只会让人以为卡里没钱了。
+ *
+ * 只做提示不做硬校验：mock 数据是随机生成的，账户余额本就是负的，
+ * 硬拦会让弹层在演示环境里根本存不进去；真后端数据平衡后可升级为校验。
+ */
+const fromAvailableText = computed(() => {
+  if (form.accountId == null)
+    return ''
+  const a = accountStore.accountMap.get(form.accountId)
+  if (!a)
+    return ''
+  const available = accountStore.availableOf(form.accountId)
+  const label = a.type === 'credit' ? '可用额度' : '可用'
+  // 余额为负（mock 常见）时加个后缀说明，免得用户以为算错了
+  const suffix = available < 0 ? '（已透支）' : ''
+  return `${label} ${formatCents(available, { withSymbol: true })}${suffix}`
+})
+
 // ── 金额输入做限制：只保留数字 + 单个小数点，最多 2 位小数 ─
 function sanitizeAmount(text: string): string {
   // 1. 先删掉除数字和小数点以外的字符
@@ -100,6 +125,9 @@ watch(() => quickEntry.visible, async (visible) => {
     return
   // 账户按账本加载（dict 内部记账本标记，切过账本会重新拉）
   await dict.ensureLoaded(book.currentBookId)
+  // 余额（可用额度）来自账户 store，单独按需加载：它只在支出/转账时用于提示，
+  // 不阻塞上面的字典加载，避免为了一句「可用 ¥x」把弹层打开变慢
+  void accountStore.ensureLoaded()
 
   // 回填上次的分类/账户（PRD 8.3 默认值记忆）
   form.categoryId = quickEntry.lastCategoryId
@@ -210,6 +238,15 @@ async function submit(closeAfter: boolean) {
     void book.refresh()
     showSavedToast(created)
 
+    // 预算预警（US-006 验收：超 80% toast）——只对支出查；未设预算 / 未达阈值返回 null
+    const budgetAlert = await budgetAlertAfterSave(created)
+    if (budgetAlert) {
+      if (budgetAlert.level === 'error')
+        message.error(budgetAlert.text, { duration: 6000 })
+      else
+        message.warning(budgetAlert.text, { duration: 6000 })
+    }
+
     // 清空金额/备注、保留类型/分类/账户，聚焦金额准备下一笔
     form.amountText = ''
     form.note = ''
@@ -303,6 +340,7 @@ useEventListener(document, 'keydown', onKeydown)
             :options="accountOptions"
             placeholder="选择账户"
           />
+          <span v-if="fromAvailableText" class="field-hint">{{ fromAvailableText }}</span>
         </div>
         <div v-if="form.type === 'transfer'" class="field field-transfer-to">
           <label class="field-label">转入账户</label>
@@ -489,6 +527,13 @@ useEventListener(document, 'keydown', onKeydown)
   font-size: 12px;
   font-weight: 500;
   color: var(--lz-text-regular);
+}
+
+// 账户可用余额提示：弱化到辅助层级，不抢主输入框的注意力
+.field-hint {
+  font-size: 12px;
+  color: var(--lz-text-tertiary, var(--lz-text-secondary));
+  font-variant-numeric: tabular-nums;
 }
 
 .date-picker {
