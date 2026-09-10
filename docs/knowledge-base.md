@@ -93,6 +93,8 @@ transaction → account → category
 | 搜索 | bash grep 静默空 | 沙箱 `bash grep` 对中文路径项目失效 | 一律用 Grep 工具 |
 | Mock | 装修/旅行账本净余额深度负数（-350 万 / -86 万） | 造数只铺账户期初 + 随机收支，漏了真实场景里「业主拨款 / 旅行预拨」这类一次性大额收入；装修 amountScale=8 把支出放大到 ~389 万 | `BookSeed.startupFunds: number[]`：装修 `[50,50,50]万`、旅行 `[50 万]`；生成时按「笔数均分到过去 24 个月」先 push income；stats 单测守护净余额绝对值 < 50 万 |
 | Mock | 测试用 `pnpm vitest run` 单跑 stats 文件 SIGTERM | vitest 5 默认多 worker 并发，stats 文件加载大数据池撞 OOM | 不必关心：用 `pnpm test` 跑全套时正常通过（91 秒）；单跑如遇 OOM 可加 `--no-isolate` |
+| 通用 | 新建 .ts 文件后 lint 报 `Newline required at end of file` | antfu/eslint-config `style/eol-last` 要求文件末尾恰好一个 `\n`；编辑器（VS Code）保存时若末行无换行则跳过 | 新建文件最后一行必须是 `}\n` 结尾；或 `printf '\n' >> file` 补；CI 门禁会卡这条 |
+| 通用 | `pnpm` 命令报 `No such file or directory` | pnpm 是 corepack shim（`~/.npm-global/bin/pnpm → corepack`），Bash 沙箱 cwd 不持久 + PATH 与终端不同 | 用绝对路径 `~/.npm-global/bin/pnpm`，或 cd 进 frontend 后再调 |
 
 ---
 
@@ -195,8 +197,44 @@ transaction → account → category
 - **演示用故障注入**：`api/modules/transaction/index.ts` 的 `listTransactions` 在「浏览器 + URL 带 `?chaos=1`」时 `Promise.reject`，用于看完整的「重试 3 次 → 失败 toast → 手动重试」链路；Node / 测试环境（无 `window`）永远走正常分支，**不影响单测**。删 mock 时连同本段一起删。
 - **教训**：重试默认 2 次 = 共 3 次尝试；mock 阶段不建议加指数退避（没必要），真后端再上 backoff。
 
-**本轮新增 / 改动文件**：
-`utils/errorHumanizer.ts`（新）｜ `composables/useRetryable.ts`（新）＋ `useRetryable.test.ts`（新，5 例）｜ `types/transaction.ts`（`TransactionStatus` + `status` 字段 + 列表 `status` 参数）｜ `api/modules/transaction/{mock,index}.ts`（状态过滤 + chaos 注入）｜ `api/modules/import/mock.ts`（提交置 pending）｜ `api/modules/recurring/mock.ts`（确认置 confirmed）｜ `views/transaction/composables/useTransactionList.ts`（status 筛选 / 键盘 activeIndex / 重试 / 确认）｜ `views/transaction/components/FilterPanel.vue`（状态筛选项）｜ `views/transaction/index.vue`（rowClassName / 键盘 handler / 待确认徽标 + 确认按钮 / 错误条）。
+### 10.4 批量确认（待确认 → 已记，一次勾选全提交）
+
+> US-002 体验补强 C 轮打磨，行级「确认」按钮存在但一次只能点一笔；批量确认用于「导入 100 条流水后一次性全确认」的场景。
+
+- **API 独立函数**：`mockBatchUpdateStatus(ids, status)` 与 `mockBatchUpdateCategory(ids, categoryId)` 同结构，但走独立函数避免误传 status；包外层 `simulateLatency` 与 batch 类接口保持一致。
+- **status 二次过滤**：UI 层（`useTransactionList.confirmBatch`）先按 `t.status === 'pending'` 过滤再发请求，API 层（mockBatchUpdateStatus）只按 id 命中改写。**两层互不信任**，即便用户误勾了「已记」行也不会被回退成 pending —— 防御性编程。
+- **乐观更新策略**：当前选择「等 mock 返回 + reload」，不是「先本地改再请求」。原因：
+  - 批量后行会从「待确认」筛选视图消失，纯前端乐观更新要同步处理 `list/selectedIds`；
+  - mock 是同步内存操作，等 0~200ms 的延迟可接受；
+  - 失败回滚只需要 reload 一次，简单可靠。
+- **测试数据陷阱**（值得记一笔）：transaction mock **没有 reset helper**，`_transactions` 启动即被 `generateTransactions` 灌满（幂等）。所以测试只挑真实种子里几条改，**不重置数据** —— 测的是「改对了 / 计数对 / 不动不相关的」，不是初始状态。
+- **测试用例**（3 例）：① 改指定 id 的 status + 返回笔数 + updatedAt 推进；② 不存在 id 返回 0 且不动任何行；③ 混合命中/未命中，只改命中的。
+
+### 10.5 筛选快捷键（Cmd+K / 1/2/3 / Esc）
+
+> US-002 体验补强 C 轮打磨，让「高手用户」不用鼠标也能切筛选、清筛选、聚焦搜索框。
+
+- **文档级 keydown handler**（`document.addEventListener`），与 `.grid-host` 的 `onGridKeydown` 并存但分工不同：
+  - `onGridKeydown` 处理表格内 ↑↓/Enter/Esc（vxe 范围内）
+  - `onShortcutKeydown` 处理 Cmd+K / 1/2/3 / 全局 Esc（文档级）
+  - `onBeforeUnmount` 必须 `removeEventListener`，否则跳页后泄漏监听。
+- **让权原则**（与 §10.1 表格键盘导航一致，但搬到文档级）：
+  - `input/select/textarea/contentEditable` 正在被输入 → 不接管（用户打字优先）
+  - 命令修饰键（Cmd/Ctrl）只拦截 K，其他组合（Cmd+R 刷新、Cmd+W 关页等）放行
+  - 数字键 1/2/3 切 status 必须非输入态 + 非修饰键态
+- **Cmd/Ctrl+K 聚焦关键词**：用 `document.querySelector('.filter-area input')` 拿到关键词框并 `focus() + select()`。前提：`FilterPanel.vue` 根 `<aside>` 加 `class="filter-area"` 让 querySelector 能命中（**这是个隐式契约**，未来重命名要小心）。
+- **数字键 1/2/3 → 'all'/'pending'/'confirmed'**：调用 `applyFilter({})` 触发 reload，比直接改 reactive 更稳（避开 watch 同步时机坑）。
+- **Esc 清空筛选**（与表格 Esc 退出编辑不冲突）：
+  - 表格内 Esc 走 vxe 原生 `editConfig.escToCancel` —— 完全独立路径
+  - 文档级 Esc 只在「非编辑态 + 非输入态 + 有筛选内容」时触发 `resetFilter()`
+  - 用 `hasActiveFilter(filter)` 守卫，避免误清。
+- **踩坑 — eol-last**：antfu/eslint-config 的 `style/eol-last` 默认要求文件末尾恰好一个换行；新建文件漏写时 lint 0 error 阶段漏检，但 commit 钩子会在 staged 文件触发 lint-staged 时报错。教训：**所有新建 .ts/.vue 文件最后一行必须 `}\n` 结尾**（很多编辑器默认不补）。
+
+**本轮新增 / 改动文件**（C 任务打磨）：
+`api/modules/transaction/mock.ts`（+mockBatchUpdateStatus）｜ `api/modules/transaction/mock.test.ts`（新，3 例）｜ `api/modules/transaction/index.ts`（+batchUpdateStatus）｜ `views/transaction/composables/useTransactionList.ts`（+confirmBatch + watch 加 status 依赖）｜ `views/transaction/components/FilterPanel.vue`（根加 .filter-area 类）｜ `views/transaction/index.vue`（文档级快捷键 handler + 批量确认按钮）。
+
+**§10 三轮（A→C）累计改动文件**：
+`utils/errorHumanizer.ts`（新）｜ `composables/useRetryable.ts`（新）＋ `useRetryable.test.ts`（新，5 例）｜ `types/transaction.ts`（`TransactionStatus` + `status` 字段 + 列表 `status` 参数）｜ `api/modules/transaction/{mock,index}.ts`（状态过滤 + chaos 注入 + 批量改状态）｜ `api/modules/transaction/mock.test.ts`（新，3 例）｜ `api/modules/import/mock.ts`（提交置 pending）｜ `api/modules/recurring/mock.ts`（确认置 confirmed）｜ `views/transaction/composables/useTransactionList.ts`（status 筛选 / 键盘 activeIndex / 重试 / 确认 / 批量确认）｜ `views/transaction/components/FilterPanel.vue`（状态筛选项 + .filter-area 类）｜ `views/transaction/index.vue`（rowClassName / 表格键盘 handler / 文档级快捷键 handler / 待确认徽标 + 确认按钮 / 批量确认按钮 / 错误条）。
 
 ## 11. US-010 规则引擎（已交付）
 
