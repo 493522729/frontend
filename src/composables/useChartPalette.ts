@@ -3,7 +3,7 @@
  * ====================================================================
  * 解决两个真实问题：
  *
- * 1. canvas 读不到 CSS 变量 —— 只能读一次值喂给 option（见 _echarts.ts）
+ * 1. canvas 读不到 CSS 变量 —— 只能读一次值喂给 option（见 utils/echarts.ts）
  * 2. 暗色切换的时序 —— app store 用 watchEffect 改 <html class="dark">，
  *    图表组件如果在同一轮 pre flush 里读 getComputedStyle，可能读到旧值。
  *    所以这里用 flush: 'post' 的 watch，确保 class 落定后再重读。
@@ -12,10 +12,10 @@
  * 暗色切换后图表会自动用新色板重绘。
  */
 
-import type { ChartPalette } from '../_echarts'
+import type { ChartPalette } from '@/utils/echarts'
 import { nextTick, ref, watch } from 'vue'
 import { useAppStore } from '@/stores/modules/app'
-import { readPalette } from '../_echarts'
+import { readPalette } from '@/utils/echarts'
 
 export function useChartPalette() {
   const app = useAppStore()

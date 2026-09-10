@@ -1,27 +1,29 @@
 <script setup lang="ts">
 /**
- * 近 6 月收支趋势折线（PRD 8.1）
+ * 净资产走势折线（资产趋势主页图）
  * ====================================================================
- * 双线：收入（绿）/ 支出（红），hover 显示该月精确值。
+ * 三条序列：净资产（主色填充）/ 总资产（正向色）/ 负债（负向色），
+ * 图例可单独关掉 —— 大多数时候用户只想看净值那一条。
  *
- * 两个取舍：
- *   - x 轴只显示「9月」，完整「2026年9月」放 tooltip —— 轴标签太长会互相挤掉，
- *     而跨年时真正需要年份的场景是看详情，tooltip 里给全就够了
- *   - y 轴过万用「万」收口：6 位数字会把绘图区挤到只剩一半
+ * 两个刻意的选择：
+ *   - 净资产用面积图：它是一条「家底的总量曲线」，填充后面积感 = 钱堆的高度，
+ *     比单纯的线更能表达「变多变少」
+ *   - x 轴只显示「9月」：跨年时才需要年份，放在 tooltip 里给全就够了，
+ *     轴标签写「2026-09」会互相挤掉
  */
 import type { LineSeriesOption } from 'echarts/charts'
 import type { GridComponentOption, LegendComponentOption, TooltipComponentOption } from 'echarts/components'
 import type { ComposeOption } from 'echarts/core'
-import type { TrendPoint } from '@/types/stats'
+import type { NetWorthPoint } from '@/types/stats'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { axisMoneyLabel, ensureECharts } from '@/utils/echarts'
+import { axisMoneyLabel, ensureECharts, tooltipStyle } from '@/utils/echarts'
 import { formatCents } from '@/utils/money'
 import { monthLabel, parseMonth } from '@/utils/temporal'
 
 const props = defineProps<{
-  points: TrendPoint[]
+  points: NetWorthPoint[]
 }>()
 
 ensureECharts()
@@ -37,11 +39,7 @@ const option = computed<LineOption>(() => {
   return {
     tooltip: {
       trigger: 'axis',
-      backgroundColor: p.card,
-      borderColor: p.border,
-      borderWidth: 1,
-      textStyle: { color: p.text, fontSize: 12 },
-      axisPointer: { type: 'line', lineStyle: { color: p.border } },
+      ...tooltipStyle(p),
       formatter: (raw: unknown) => {
         const items = raw as { name: string, seriesName: string, value: number, marker?: string }[]
         if (!items.length)
@@ -76,26 +74,45 @@ const option = computed<LineOption>(() => {
     },
     series: [
       {
-        name: '收入',
+        name: '净资产',
         type: 'line',
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        lineStyle: { width: 2, color: p.income },
-        itemStyle: { color: p.income },
-        areaStyle: { color: p.income, opacity: 0.08 },
-        data: props.points.map(pt => pt.income),
+        lineStyle: { width: 2.5, color: p.primary },
+        itemStyle: { color: p.primary },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: `${p.primary}44` },
+              { offset: 1, color: `${p.primary}05` },
+            ],
+          },
+        },
+        data: props.points.map(pt => pt.netAssets),
       },
       {
-        name: '支出',
+        name: '总资产',
         type: 'line',
         smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { width: 2, color: p.expense },
+        symbol: 'none',
+        lineStyle: { width: 1.5, color: p.income, type: 'dashed' },
+        itemStyle: { color: p.income },
+        data: props.points.map(pt => pt.assets),
+      },
+      {
+        name: '负债',
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { width: 1.5, color: p.expense, type: 'dashed' },
         itemStyle: { color: p.expense },
-        areaStyle: { color: p.expense, opacity: 0.08 },
-        data: props.points.map(pt => pt.expense),
+        data: props.points.map(pt => pt.debt),
       },
     ],
   }
@@ -103,12 +120,12 @@ const option = computed<LineOption>(() => {
 </script>
 
 <template>
-  <VChart class="trend-line" :option="option" autoresize />
+  <VChart class="net-worth-line" :option="option" autoresize />
 </template>
 
 <style scoped lang="scss">
-.trend-line {
+.net-worth-line {
   width: 100%;
-  height: 300px;
+  height: 320px;
 }
 </style>

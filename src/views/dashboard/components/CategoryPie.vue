@@ -16,9 +16,9 @@ import type { ComposeOption } from 'echarts/core'
 import type { CategorySlice } from '@/types/stats'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
+import { useChartPalette } from '@/composables/useChartPalette'
+import { ensureECharts } from '@/utils/echarts'
 import { formatCents, sumCents } from '@/utils/money'
-import { ensureECharts } from '../_echarts'
-import { useChartPalette } from '../composables/useChartPalette'
 
 const props = defineProps<{
   slices: CategorySlice[]
