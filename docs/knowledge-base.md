@@ -152,6 +152,43 @@ transaction → account → category
 
 ## 9. Next 队列（待办）
 
-- **体验补强（P1 收尾）**：键盘导航 ↑↓/Enter/Esc、状态筛选（待确认 / 已记）、网络错误重试 toast（PRD §15.2.2 未完项）。
+- **体验补强（P1 收尾）**：键盘导航 ↑↓/Enter/Esc、状态筛选（待确认 / 已记）、网络错误重试 toast —— 已于工作区交付（未提交，待老赵 review 代码后自提）。详见 §10。
 - 已知毛刺：装修 / 旅行账本余额深度负数（全账本「负债 170 万」），待造数脚本修正。
 - P2 候选（按需）：US-010 规则引擎、US-011 命令面板、US-012 智能洞察、US-013 移动端 PWA、US-014 可视化大屏。
+
+## 10. 体验补强知识点（键盘导航 / 状态筛选 / 网络重试）
+
+> 本轮落地的三件「专业感」补强，集中在交易大表（`views/transaction/`）。代码已写、门禁全绿（typecheck 0 / lint 0 / 168 测试通过），但**按老赵要求未提交**。
+
+### 10.1 键盘导航（↑↓ 移焦点 / Enter 编辑 / Esc 退出）
+- **高亮行**靠 vxe-grid 的 `rowClassName` 配置项，函数参数为 `{ rowIndex }`，与 `list` 数组下标对齐；active 行加 `.is-active-row` 类。
+- **样式命中**：vxe 运行时生成的 `<tr>` 不带本组件 scoped 属性，scoped CSS 命中不到，必须用 `:deep(.is-active-row)`。
+- **滚动跟随**：`grid.scrollToRow(row)` 把高亮行滚进可视区（虚拟滚动下必需，否则高亮可能在视口外）。
+- **进入编辑**：`grid.setEditCell(row, 'amount')`；退出用 `grid.clearEdit()`。
+- **判断编辑态**：vxe-table 4.x **没有 `isEdit()`**！要用 `grid.getEditRecord()` 返回是否非空来判断；之前误用 `isEdit?.()` 导致编辑态判断永远为 false，Esc 只清 activeIndex 而不退出单元格编辑。
+- **Esc 双保险**：`editConfig` 开启 `escToCancel: true`（vxe 原生取消编辑）；自定义 `keydown` handler 里再用 `getEditRecord()` 判断，编辑态下 Esc 调用 `clearEdit()` 并 `preventDefault/stopPropagation`，避免和 vxe 内部 handler 冲突。
+- **事件让权原则**（避免和正常输入打架）：
+  - 正在编辑单元格（getEditRecord 非空）→ Esc 取消编辑并阻止冒泡，方向键不插手；
+  - 焦点在 `input/select/textarea` 或 `contentEditable` → 那是打字，方向键留给光标；
+  - 其余才由本 handler 接管方向键 / Enter / Esc。
+- `activeIndex` 状态放在 composable（与 `list` 同生命周期），reload 成功后重置为 -1；点单元格用 `@cell-click` 同步高亮，鼠标 / 键盘状态一致。
+
+### 10.2 状态筛选（待确认 / 已记）
+- **语义**：`Transaction.status?: 'pending' | 'confirmed'`，缺省视为 `confirmed`（存量 / 手动数据无需复核）。
+  - 导入进来的流水（US-008）置 `pending` —— 用户需在交易表复核确认；
+  - 周期账单确认入账（US-009）置 `confirmed` —— 区别于导入待复核。
+- **过滤链路**：`FilterState.status('all'|'pending'|'confirmed')` → URL 同步（`?status=pending`）→ `TransactionListParams.status` → `mockListTransactions` 按 `(t.status ?? 'confirmed') === status` 过滤。
+- **确认动作**：行内「确认」按钮调 `confirmRow(id)`，乐观更新 `status='confirmed'` + `updateTransaction` 回滚策略同 `saveRow`；筛「待确认」时确认后该行移出当前视图。
+- 这是和 US-008 导入对账的**闭环**：导入 → 待确认 → 交易表确认 → 已记。
+
+### 10.3 网络错误重试 + 统一错误 toast
+- **两层 API**（`composables/useRetryable.ts`）：
+  - `withRetry(fn, { retries=2, delay=400 })` —— 纯函数，自动重试（默认 1 原始 + 2 重试 = 共 3 次，对齐 PRD 9.5「重试 3 次」），全失败抛最后一次错误；可单测。
+  - `useRetryable(fn, opts)` —— Vue 组合式封装，额外管 `loading/error/data`，适合组件直接挂。
+- **错误说人话**（`utils/errorHumanizer.ts`）：把 `Error` 按网络 / 4xx / 5xx / 其他归一成 `{ title, detail, code }`，供 notification 用，不再抛 `Failed to fetch` 这类机器语言。
+- **接线**：`useTransactionList.load()` 用 `withRetry(() => listTransactions(params))` 包裹；失败时 `notification.error`（带「重试」按钮，duration:0 不自动消失） + 页面顶部错误条（`<NButton @click="reload">`）。
+- **演示用故障注入**：`api/modules/transaction/index.ts` 的 `listTransactions` 在「浏览器 + URL 带 `?chaos=1`」时 `Promise.reject`，用于看完整的「重试 3 次 → 失败 toast → 手动重试」链路；Node / 测试环境（无 `window`）永远走正常分支，**不影响单测**。删 mock 时连同本段一起删。
+- **教训**：重试默认 2 次 = 共 3 次尝试；mock 阶段不建议加指数退避（没必要），真后端再上 backoff。
+
+**本轮新增 / 改动文件**：
+`utils/errorHumanizer.ts`（新）｜ `composables/useRetryable.ts`（新）＋ `useRetryable.test.ts`（新，5 例）｜ `types/transaction.ts`（`TransactionStatus` + `status` 字段 + 列表 `status` 参数）｜ `api/modules/transaction/{mock,index}.ts`（状态过滤 + chaos 注入）｜ `api/modules/import/mock.ts`（提交置 pending）｜ `api/modules/recurring/mock.ts`（确认置 confirmed）｜ `views/transaction/composables/useTransactionList.ts`（status 筛选 / 键盘 activeIndex / 重试 / 确认）｜ `views/transaction/components/FilterPanel.vue`（状态筛选项）｜ `views/transaction/index.vue`（rowClassName / 键盘 handler / 待确认徽标 + 确认按钮 / 错误条）。
