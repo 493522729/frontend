@@ -197,3 +197,50 @@ transaction → account → category
 
 **本轮新增 / 改动文件**：
 `utils/errorHumanizer.ts`（新）｜ `composables/useRetryable.ts`（新）＋ `useRetryable.test.ts`（新，5 例）｜ `types/transaction.ts`（`TransactionStatus` + `status` 字段 + 列表 `status` 参数）｜ `api/modules/transaction/{mock,index}.ts`（状态过滤 + chaos 注入）｜ `api/modules/import/mock.ts`（提交置 pending）｜ `api/modules/recurring/mock.ts`（确认置 confirmed）｜ `views/transaction/composables/useTransactionList.ts`（status 筛选 / 键盘 activeIndex / 重试 / 确认）｜ `views/transaction/components/FilterPanel.vue`（状态筛选项）｜ `views/transaction/index.vue`（rowClassName / 键盘 handler / 待确认徽标 + 确认按钮 / 错误条）。
+
+## 11. US-010 规则引擎（已交付）
+
+> 简历亮点「规则引擎」：if X then Y 的纯函数链 + 交易保存时即时触发 + 可视化试算。
+
+### 11.1 核心契约
+
+- **条件 DSL**：`{ field, op, value }[]` AND 组合，UI 层（`RULE_FIELDS` / `operatorsForField`）保证字段允许的操作符子集对齐；
+- **动作链**：`{ type: 'setCategory'|'appendNote'|'addTag'|'notify', payload }[]`，按数组顺序应用，前一个改了字段后一个能看到新值（chain 语义）；
+- **触发时机**：v1 只实现 `onSave`（保存交易时跑），其他时机（onImport、onSchedule）按 v2 扩展；
+- **纯函数**：`runRule(rule, txn)` 与 `applyRulesToTransaction(txn, rules)` 都无副作用，方便单测，UI 试算直接走它。
+
+### 11.2 数据流向（保存交易 → 跑规则链 → 写回）
+
+`useTransactionList.saveRow(id, patch)`：
+1. 取本地 `before`，合并 `patch` 得 `optimistic`，立即更新列表（乐观）；
+2. 跑 `applyRulesToTransaction(optimistic, ruleStore.list)` 拿到 `ruled`；
+3. **比对 ruled 与 optimistic 的差异**，把规则改的部分并入 `finalPatch`，提交给 mock；
+4. mock 返回 `updated`，列表替换；失败则 rollback 到 `before`。
+
+> **关键设计**：规则应用**只追加 diff，不覆盖用户的 patch**。用户改的金额不会被规则反向覆盖（除非规则真的改了金额，那是另一个 patch）。
+
+### 11.3 合并冲突策略
+
+- `setCategory`：后者规则覆盖前者（按 `rule.id` 升序）；
+- `appendNote` / `addTag`：追加语义，不冲突（已有 `#tag` 不重复加）；
+- `notify`：纯函数层面只标记，UI 层消费 `executions` 数组弹通知（v1 不实现，US-010 简化版只标记）。
+
+### 11.4 文件清单
+
+`types/rule.ts`（新，Rule / RuleCondition / RuleAction / 字段与操作符常量）｜
+`api/modules/rule/{mock,index}.ts`（新，CRUD + 纯函数 runRule / applyRulesToTransaction）｜
+`api/modules/rule/mock.test.ts`（新，16 例，含 seed 干扰规避：测试里显式传 `[r1, r2]` 而非依赖默认 _rules）｜
+`stores/modules/rule.ts`（新，list / create / update / toggleActive / remove / preview）｜
+`router/modules/rule.ts`（新，/rule，order=8）｜
+`layouts/default/Sidebar/index.vue`（iconMap 加 `wand` 魔法棒 SVG 路径）｜
+`views/rule/index.vue`（新，列表卡片 + 创建/编辑 Modal + 试算 Modal）｜
+`views/transaction/composables/useTransactionList.ts`（saveRow 钩入规则引擎）｜
+`api/modules/transaction/mock.ts`（seedRules 铺 3 条示例：星巴克 → 咖啡、美团 → #外卖、大额支出提醒）。
+
+### 11.5 踩坑（值得记一笔）
+
+- **vxe NSelect 不接受 `number` 类型 value**：`c.value: string | number` 直接 v-model 会报 TS 错，改成 `:value="c.value as string"` + `@update:value="v => c.value = String(v)"`。
+- **全账本 sentinel**：业务上 `bookId: null` = 全账本，但 NSelect 的 value 不能是 `null`，用 `ALL_BOOKS = 0` 占位，提交时 `=== 0 ? null : bookId` 翻译回。
+- **测试被 seed 干扰**：seed 里有 3 条 active 规则直接跑 `applyRulesToTransaction`，跑批量合并测试时不传 `[r1, r2]` 会被 seed 串台；改成每次显式传入。
+- **`active=false` 一开始漏写跳过逻辑**：导致禁用规则仍生效，加 `if (!rule.active) continue` 修复。
+- **条件 value 默认值**：UI 选字段后如果 value 空字符串，匹配会全部命中或全部不命中（取决于 op），用 `FIELD_DEFAULTS[field]` 兜底。
