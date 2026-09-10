@@ -9,6 +9,7 @@ import type {
   Transaction,
   TransactionListParams,
   TransactionListResult,
+  TransactionStatus,
 } from '@/types/transaction'
 import {
   MOCK_LATENCY,
@@ -17,6 +18,7 @@ import {
 import {
   mockBatchDeleteTransactions,
   mockBatchUpdateCategory,
+  mockBatchUpdateStatus,
   mockCountAccountUsage,
   mockCountCategoryUsage,
   mockCreateTransaction,
@@ -67,6 +69,11 @@ export function restoreTransactions(rows: Transaction[]): Promise<void> {
 /** 批量改分类 */
 export function batchUpdateCategory(ids: number[], categoryId: number): Promise<number> {
   return simulateLatency(mockBatchUpdateCategory(ids, categoryId))
+}
+
+/** 批量改状态（待确认 / 已记）—— US-002 体验补强 */
+export function batchUpdateStatus(ids: number[], status: TransactionStatus): Promise<number> {
+  return simulateLatency(mockBatchUpdateStatus(ids, status))
 }
 
 /** 分类迁移：把某分类下的交易改挂目标分类（删除分类时调用） */

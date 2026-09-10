@@ -15,6 +15,7 @@ import type {
   Transaction,
   TransactionListParams,
   TransactionListResult,
+  TransactionStatus,
 } from '@/types/transaction'
 import { BOOK_SEEDS } from '@/api/mock-books'
 import { initAccounts, mockListAccounts } from '@/api/modules/account/mock'
@@ -291,6 +292,24 @@ export function mockBatchUpdateCategory(ids: number[], categoryId: number): numb
     if (ids.includes(t.id)) {
       t.categoryId = categoryId
       t.updatedAt = Date.now()
+      n++
+    }
+  }
+  return n
+}
+
+/**
+ * 批量改状态（待确认 / 已记）—— US-002 体验补强
+ * 与 batchUpdateCategory 同结构，但走单独函数避免「批量改分类」误传 status。
+ * @returns 实际改成功的笔数
+ */
+export function mockBatchUpdateStatus(ids: number[], status: TransactionStatus): number {
+  let n = 0
+  const now = Date.now()
+  for (const t of _transactions) {
+    if (ids.includes(t.id)) {
+      t.status = status
+      t.updatedAt = now
       n++
     }
   }
