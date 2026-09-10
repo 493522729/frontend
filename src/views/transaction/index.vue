@@ -214,7 +214,8 @@ const BASE_COLUMNS: ColDef[] = [
     // 分类列不进 vxe 编辑态：直接常驻 NSelect（见模板 #category_cell 注释），选完即保存
     slots: { default: 'category_cell' },
   },
-  { field: 'accountId', title: '账户', width: 130, slots: { default: 'account_cell' } },
+  // 转账行要显示「A → B」两端，宽度按两条账户名预留，否则会被截断成省略号
+  { field: 'accountId', title: '账户', width: 170, slots: { default: 'account_cell' } },
   {
     field: 'amount',
     title: '金额',
@@ -517,9 +518,20 @@ async function onBatchSetCategory() {
                 />
               </template>
 
-              <!-- 账户 -->
+              <!--
+                账户
+                转账要显示「从哪 → 到哪」：只写转出账户会让人以为钱凭空少了，
+                而转账的本质就是资金在自己账户间搬运，两端都得看得见。
+              -->
               <template #account_cell="{ row }">
-                <span class="cell-inline">
+                <span v-if="row.type === 'transfer'" class="cell-inline">
+                  <span class="cell-icon">{{ dict.accountMap.get(row.accountId)?.icon ?? '·' }}</span>
+                  <span>{{ dict.accountMap.get(row.accountId)?.name ?? '-' }}</span>
+                  <span class="transfer-arrow" aria-hidden="true">→</span>
+                  <span class="cell-icon">{{ dict.accountMap.get(row.toAccountId ?? -1)?.icon ?? '·' }}</span>
+                  <span>{{ dict.accountMap.get(row.toAccountId ?? -1)?.name ?? '-' }}</span>
+                </span>
+                <span v-else class="cell-inline">
                   <span class="cell-icon">{{ dict.accountMap.get(row.accountId)?.icon ?? '·' }}</span>
                   <span>{{ dict.accountMap.get(row.accountId)?.name ?? '-' }}</span>
                 </span>
@@ -757,6 +769,14 @@ async function onBatchSetCategory() {
 
 .cell-icon {
   font-size: 14px;
+}
+
+// 转账的「→」：灰、等宽、不参与选中，避免复制单元格时把箭头一起带走
+.transfer-arrow {
+  margin: 0 2px;
+  font-size: 12px;
+  color: var(--lz-text-tertiary, var(--lz-text-secondary));
+  user-select: none;
 }
 
 // 不可编辑 / 无内容的占位：与 .cell-inline 同高度对齐，灰色弱化

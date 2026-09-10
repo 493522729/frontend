@@ -7,10 +7,18 @@
  * 无论数据怎么随机，这些等式都必须成立。
  */
 import { beforeAll, describe, expect, it } from 'vitest'
+import { BOOK_SEEDS } from '@/api/mock-books'
 import { sumCents } from '@/utils/money'
+import { formatMonth, lastNMonths } from '@/utils/temporal'
+import { mockListAccounts } from '../account/mock'
 import { mockListBooks } from '../book/mock'
-import { mockGetAllTransactions, mockListAccounts } from '../transaction/mock'
-import { mockGetDashboardOverview, mockGetTotalNetAssets } from './mock'
+import { mockGetAllTransactions } from '../transaction/mock'
+import {
+  mockGetAccountBalances,
+  mockGetDashboardOverview,
+  mockGetNetWorthTrend,
+  mockGetTotalNetAssets,
+} from './mock'
 
 /** 朴素重算：不复用被测代码的任何逻辑，独立实现一份用来对照 */
 function naiveSumByMonth(month: string, type: 'income' | 'expense' | 'transfer'): number {
@@ -144,5 +152,111 @@ describe('mockGetTotalNetAssets —— 全账本总资产', () => {
       0,
     )
     expect(total).toBe(perBookTotal)
+  })
+})
+
+describe('mockGetAccountBalances —— 账户余额（US-004）', () => {
+  // 这条是账户体系的「对账」底线：账户页显示的净资产，必须和仪表盘的
+  // 资产净值分毫不差。两处口径一旦分叉，用户会看到「账户加起来 1 万、
+  // 仪表盘显示 8 千」这种无法解释的差异，信任直接崩掉。
+  it('账户余额合计 = 该账本净值（账户视角与全局视角自洽）', () => {
+    for (const seed of BOOK_SEEDS) {
+      const sum = sumCents(mockGetAccountBalances(seed.id).map(b => b.balance))
+      expect(sum).toBe(mockGetDashboardOverview({ bookId: seed.id }).netAssets)
+    }
+  })
+
+  it('每个账户都有余额记录（没有流水的账户余额 = 期初）', () => {
+    const bookId = BOOK_SEEDS[0]!.id
+    const accounts = mockListAccounts(bookId)
+    const balances = mockGetAccountBalances(bookId)
+    expect(balances).toHaveLength(accounts.length)
+    for (const a of accounts)
+      expect(balances.some(b => b.accountId === a.id)).toBe(true)
+  })
+
+  it('转账在两端一进一出，不改变任何账户余额合计', () => {
+    const bookId = BOOK_SEEDS[0]!.id
+    const transfers = mockGetAllTransactions(bookId).filter(t => t.type === 'transfer')
+    // 用「朴素实现」独立重算一遍转账对每个账户的影响，再对照余额表
+    const naive = new Map<number, number>()
+    for (const t of transfers) {
+      naive.set(t.accountId, (naive.get(t.accountId) ?? 0) - t.amount)
+      if (t.toAccountId != null)
+        naive.set(t.toAccountId, (naive.get(t.toAccountId) ?? 0) + t.amount)
+    }
+    for (const b of mockGetAccountBalances(bookId)) {
+      const delta = (naive.get(b.accountId) ?? 0)
+      expect(b.transferIn - b.transferOut).toBe(delta)
+    }
+  })
+})
+
+describe('mockGetNetWorthTrend —— 资产趋势（P1）', () => {
+  const MONTHS = 12
+
+  it('区间长度与月序：请求 N 个月就返回 N 个点，最后一点是当月', () => {
+    const t = mockGetNetWorthTrend({ months: MONTHS })
+    expect(t.points).toHaveLength(MONTHS)
+    expect(t.points.map(p => p.month)).toEqual(lastNMonths(MONTHS).map(formatMonth))
+  })
+
+  // 对账底线：曲线末端必须就是仪表盘上那个「资产净值」。
+  // 两页数字不一致时，用户不会怀疑算法，只会觉得这软件不可靠。
+  it('末点净资产 = 仪表盘资产净值（趋势页与仪表盘是同一口径）', () => {
+    const t = mockGetNetWorthTrend({ months: MONTHS })
+    expect(t.endNetAssets).toBe(mockGetDashboardOverview().netAssets)
+    expect(t.points.at(-1)!.netAssets).toBe(t.endNetAssets)
+  })
+
+  it('净资产 = 总资产 - 负债（拆分不能拆出对不上的账）', () => {
+    const t = mockGetNetWorthTrend({ months: MONTHS })
+    for (const p of t.points) {
+      expect(p.netAssets).toBe(p.assets - p.debt)
+      expect(p.assets).toBeGreaterThanOrEqual(0)
+      expect(p.debt).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('月度净增 = 当月收入 - 当月支出（与朴素重算一致，转账不参与）', () => {
+    const t = mockGetNetWorthTrend({ months: MONTHS })
+    for (const p of t.points) {
+      const naive = naiveSumByMonth(p.month, 'income') - naiveSumByMonth(p.month, 'expense')
+      expect(p.netChange).toBe(naive)
+    }
+  })
+
+  it('区间净增 = 末点 - 起点，且等于各月净增之和', () => {
+    const t = mockGetNetWorthTrend({ months: MONTHS })
+    expect(t.change).toBe(t.endNetAssets - t.startNetAssets)
+    expect(t.change).toBe(sumCents(t.points.map(p => p.netChange)))
+  })
+
+  it('峰值 / 谷值 / 最大回撤：回撤非负，且不超过峰谷差', () => {
+    const t = mockGetNetWorthTrend({ months: MONTHS })
+    expect(t.peak).not.toBeNull()
+    expect(t.trough).not.toBeNull()
+    for (const p of t.points) {
+      expect(p.netAssets).toBeLessThanOrEqual(t.peak!.netAssets)
+      expect(p.netAssets).toBeGreaterThanOrEqual(t.trough!.netAssets)
+    }
+    expect(t.maxDrawdown).toBeGreaterThanOrEqual(0)
+    expect(t.maxDrawdown).toBeLessThanOrEqual(t.peak!.netAssets - t.trough!.netAssets)
+  })
+
+  // 账本隔离：看「装修账本」的曲线不该混入日常账本的家底
+  it('账本隔离：每个账本曲线末端 = 该账本净值', () => {
+    for (const seed of BOOK_SEEDS) {
+      const t = mockGetNetWorthTrend({ bookId: seed.id, months: 6 })
+      expect(t.endNetAssets).toBe(mockGetDashboardOverview({ bookId: seed.id }).netAssets)
+    }
+  })
+
+  it('区间越长起点越早：24 月区间的首月早于 6 月区间（且覆盖它）', () => {
+    const long = mockGetNetWorthTrend({ months: 24 })
+    const short = mockGetNetWorthTrend({ months: 6 })
+    // 月份是 'YYYY-MM' 字符串，字典序即时间序，但 toBeLessThan 只接受数字，故显式比较
+    expect(long.points[0]!.month < short.points[0]!.month).toBe(true)
+    expect(long.points).toContainEqual(short.points.at(-1))
   })
 })

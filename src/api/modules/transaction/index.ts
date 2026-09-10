@@ -6,7 +6,6 @@
  * 业务代码（views/transaction/*）一行不用动。
  */
 import type {
-  Account,
   Transaction,
   TransactionListParams,
   TransactionListResult,
@@ -18,27 +17,20 @@ import {
 import {
   mockBatchDeleteTransactions,
   mockBatchUpdateCategory,
+  mockCountAccountUsage,
   mockCountCategoryUsage,
   mockCreateTransaction,
   mockDeleteTransaction,
-  mockListAccounts,
   mockListTransactions,
+  mockReassignAccount,
   mockReassignCategory,
   mockRestoreTransactions,
   mockUpdateTransaction,
 } from './mock'
-// 分类字典归属 category 模块，这里透传，保持旧的调用方（dict store）零改动
-export { listCategories } from '@/api/modules/category'
 
-/**
- * 账户字典
- *
- * 传 bookId 只返回该账本下的账户（US-005）：切账本后筛选面板和记账弹层
- * 的账户下拉必须跟着换，否则能选到别的账本的账户，数据就串了。
- */
-export function listAccounts(bookId?: number): Promise<Account[]> {
-  return simulateLatency(mockListAccounts(bookId))
-}
+export { listAccounts } from '@/api/modules/account'
+// 分类 / 账户字典归属各自模块，这里透传，保持旧的调用方（dict store）零改动
+export { listCategories } from '@/api/modules/category'
 
 /** 分页查交易 */
 export function listTransactions(params: TransactionListParams): Promise<TransactionListResult> {
@@ -78,6 +70,22 @@ export function reassignCategory(fromId: number, toId: number): Promise<number> 
 /** 统计某分类被多少笔交易引用（删除前提示用） */
 export function countCategoryUsage(id: number): Promise<number> {
   return simulateLatency(mockCountCategoryUsage(id))
+}
+
+/**
+ * 统计某账户被多少笔交易引用（删除账户前提示用）
+ * @returns total 总笔数 / transfer 其中转账笔数（转账会被一并清掉，必须提前告知）
+ */
+export function countAccountUsage(id: number): Promise<{ total: number, transfer: number }> {
+  return simulateLatency(mockCountAccountUsage(id))
+}
+
+/**
+ * 账户迁移：把某账户下的收支改挂目标账户，转账笔直接删除
+ * （转账两端都是账户，缺一端就成了「自己转给自己」的脏数据）
+ */
+export function reassignAccount(fromId: number, toId: number): Promise<{ migrated: number, removed: number }> {
+  return simulateLatency(mockReassignAccount(fromId, toId), MOCK_LATENCY.write)
 }
 
 /** 新增一笔（快速记账弹层会调） */

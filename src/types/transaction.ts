@@ -74,6 +74,23 @@ export interface Account {
   creditLimit: number
 }
 
+/**
+ * 账户 + 派生余额（账户管理页 / 记账弹层用）
+ *
+ * 余额是「期初 + 流水」现算的派生值（口径见 types/stats.ts 的 AccountBalance），
+ * 不落存储 —— 改一笔流水余额立刻跟着变，不存在账户表与流水表对不上账的可能。
+ */
+export interface AccountWithBalance extends Account {
+  /** 当前余额（分，信用卡为负 = 欠款） */
+  balance: number
+  income: number
+  expense: number
+  transferIn: number
+  transferOut: number
+  /** 参与的流水笔数 */
+  txnCount: number
+}
+
 /** 分类（前端视角） */
 export interface Category {
   id: number

@@ -90,6 +90,88 @@ export interface DashboardQuery {
   month?: string
 }
 
+/**
+ * 单个账户的余额与构成（派生值，不是存储字段）
+ * ====================================================================
+ * 余额口径（与 DashboardOverview.netAssets 完全自洽，两者必须能对上账）：
+ *   余额 = 期初 + 收入 - 支出 - 转出 + 转入
+ * 转账在这里**要算**：站在单个账户的视角，钱确实流出/流进了这个账户，
+ * 只是站在「我全部家底」的视角它一进一出抵消，所以不影响净值。
+ */
+export interface AccountBalance {
+  accountId: number
+  /** 当前余额（分，信用卡为负 = 欠款） */
+  balance: number
+  /** 累计收入（分） */
+  income: number
+  /** 累计支出（分） */
+  expense: number
+  /** 累计转入（分） */
+  transferIn: number
+  /** 累计转出（分） */
+  transferOut: number
+  /** 参与的流水笔数（转账在两端各计一次 —— 两个账户都"参与"了这笔） */
+  txnCount: number
+}
+
+/**
+ * 资产趋势（净值走势）数据契约
+ * ====================================================================
+ * 仪表盘只有「当前净值」一个数字，用户看不到"钱在变多还是变少"。
+ * 这里按月给出**月末时点快照**，把净值变成一条曲线。
+ *
+ * 口径（必须与 DashboardOverview.netAssets 对得上账，否则页面间数字打架）：
+ *   - 净资产 = 总资产 - 负债 = Σ账户余额（转账一进一出抵消，不影响净值）
+ *   - 总资产 = Σ正余额账户；负债 = Σ负余额账户取正（信用卡欠款）
+ *   - 月度净增 = 当月收入 - 当月支出（收入让净值涨、支出让净值跌）
+ *   - 趋势最后一个点 = 当前净资产（与仪表盘净值卡同一个值）
+ */
+
+/** 资产趋势查询参数 */
+export interface NetWorthQuery {
+  bookId?: number
+  /** 回看月数（6 / 12 / 24），默认 12 */
+  months?: number
+}
+
+/** 单月资产快照（月末时点值，不是当月发生额） */
+export interface NetWorthPoint {
+  /** YYYY-MM */
+  month: string
+  /** 净资产 = 总资产 - 负债（分，可为负 = 资不抵债） */
+  netAssets: number
+  /** 总资产 = Σ正余额账户（分） */
+  assets: number
+  /** 负债 = Σ负余额账户取正（信用卡欠款，分） */
+  debt: number
+  /** 当月净增 = 当月收入 - 当月支出（分，可为负） */
+  netChange: number
+  /** 当月收入（分） */
+  income: number
+  /** 当月支出（分） */
+  expense: number
+}
+
+/** 资产趋势聚合结果（一次请求拿全，页面不再自己做算术） */
+export interface NetWorthTrend {
+  /** 时间正序的月末快照 */
+  points: NetWorthPoint[]
+  /** 区间起点净资产 = 第一个月的**上月月末**值，算区间涨跌的分母 */
+  startNetAssets: number
+  /** 区间终点净资产 = 最后一个点 = 当前净资产 */
+  endNetAssets: number
+  /** 区间净增 = 终点 - 起点（分） */
+  change: number
+  /** 区间涨幅 %（起点为 0 时返回 0，不除零） */
+  changePercent: number
+  /** 区间内净资产最高的月份 */
+  peak: NetWorthPoint | null
+  /** 区间内净资产最低的月份 */
+  trough: NetWorthPoint | null
+  /** 最大回撤：峰值之后最深的一次跌幅（分，正数；全程上涨则为 0） */
+  maxDrawdown: number
+}
+
 /** 环图 / 折线图都可能用到的类型守卫：判断某笔交易是否计入收支 */
 export function isIncomeOrExpense(type: TransactionType): boolean {
   return type === 'income' || type === 'expense'

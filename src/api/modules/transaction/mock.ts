@@ -12,23 +12,15 @@
 
 import type { TransactionType } from '@/enums/transaction'
 import type {
-  Account,
   Transaction,
   TransactionListParams,
   TransactionListResult,
 } from '@/types/transaction'
 import { BOOK_SEEDS } from '@/api/mock-books'
-// 分类种子与 CRUD 抽到 category/mock 统一维护；这里只取「已带 ID 的分类表」与 ID 序列起点
-import { initCategories, mockListCategories, peekNextCategoryId } from '@/api/modules/category/mock'
-
-// ── 字典：账户（分类种子见 @/api/modules/category/mock，此处不再重复） ──
-const ACCOUNT_TEMPLATES: Omit<Account, 'id' | 'bookId'>[] = [
-  { name: '招商储蓄卡', type: 'debit', icon: '🏦', initBalance: 5000000, creditLimit: 0 },
-  { name: '支付宝', type: 'alipay', icon: '💙', initBalance: 200000, creditLimit: 0 },
-  { name: '微信', type: 'wechat', icon: '💚', initBalance: 100000, creditLimit: 0 },
-  { name: '现金', type: 'cash', icon: '💵', initBalance: 50000, creditLimit: 0 },
-  { name: '招商信用卡', type: 'credit', icon: '💳', initBalance: 0, creditLimit: 5000000 },
-]
+import { initAccounts, mockListAccounts } from '@/api/modules/account/mock'
+// 分类种子与 CRUD 在 category/mock；账户种子与 CRUD 在 account/mock。
+// 本模块只负责「用这两个字典生成流水 + 流水自身的增删改」，字典不再内联在这里。
+import { mockListCategories } from '@/api/modules/category/mock'
 
 // ── 简易确定性伪随机（mulberry32） ─────────────────────
 function mulberry32(seed: number): () => number {
@@ -55,26 +47,18 @@ const NOTE_POOLS: Record<string, string[]> = {
   travel: ['', '往返机票', '酒店住宿', '景区门票', '当地交通', '伴手礼', '旅行保险', '签证费', '租车', '导游小费'],
 }
 
-// ── 字典初始化（带 ID） ────────────────────────────────
-const _accounts: Account[] = []
+// ── 数据源初始化 ─────────────────────────────────────────
+// 只在本模块内被整体替换一次（账户迁移时会 filter 重建），故用 let
 let _transactions: Transaction[] = []
 
+/**
+ * 幂等初始化字典
+ *
+ * 账户种子已下放到 account/mock（与分类同款拆分），它内部会先 initCategories，
+ * 所以这里一行就够 —— 但**必须调**：流水生成要用带 ID 的账户表。
+ */
 function init() {
-  if (_accounts.length > 0)
-    return
-  // 分类种子在 category/mock 里初始化，并独占 1..N 的 ID 段；
-  // 账户从这里接着排，保证两类字典 ID 全局不冲突。
-  initCategories()
-  let id = peekNextCategoryId()
-  // 账户按账本**各实例化一份**：每个账本有自己独立的账户，ID 全局唯一。
-  // 「装修账本的招商卡」和「日常账本的招商卡」是两条不同记录，余额互不相干。
-  for (const seed of BOOK_SEEDS) {
-    for (const idx of seed.accountTemplateIndexes) {
-      const tpl = ACCOUNT_TEMPLATES[idx]
-      if (tpl)
-        _accounts.push({ ...tpl, id: id++, bookId: seed.id })
-    }
-  }
+  initAccounts()
 }
 
 function generateTransactions() {
@@ -94,7 +78,7 @@ function generateTransactions() {
   for (const seed of BOOK_SEEDS) {
     const rand = mulberry32(MOCK.seed + seed.id * 7919)
     // 账户只在**本账本**范围内挑：跨账本转账在业务上不存在
-    const debitAccounts = _accounts.filter(a => a.bookId === seed.id && a.type !== 'credit')
+    const debitAccounts = mockListAccounts(seed.id).filter(a => a.type !== 'credit')
     const notePool = NOTE_POOLS[seed.type] ?? NOTE_POOLS.daily!
 
     for (let i = 0; i < seed.txnCount; i++) {
@@ -178,13 +162,6 @@ function generateTransactions() {
 generateTransactions()
 
 // ── 公共 API（被 src/api/modules/transaction/index.ts 包装） ──
-
-export function mockListAccounts(bookId?: number): Account[] {
-  init()
-  // 不传 = 全部账本（字典类用途）；传了 = 只给该账本下的账户。
-  // 切账本后筛选面板/记账弹层的账户下拉必须只剩本账本的，否则会选出别账本的账户。
-  return bookId == null ? _accounts : _accounts.filter(a => a.bookId === bookId)
-}
 
 /**
  * 全量交易（只读快照）—— 给 stats 等「聚合型」mock 模块用
@@ -305,6 +282,57 @@ export function mockCountCategoryUsage(id: number): number {
       n++
   }
   return n
+}
+
+/**
+ * 统计某账户被多少笔交易引用（删除账户前提示用）
+ *
+ * 特意把「转账」单列出来：转账的两端都是账户，删掉其中一端后
+ * 这笔记账就失去了意义（总不能变成「自己转给自己」），删除账户时
+ * 这类流水会被一并清掉，UI 必须提前说清楚，否则用户会觉得账平白少了。
+ */
+export function mockCountAccountUsage(id: number): { total: number, transfer: number } {
+  let total = 0
+  let transfer = 0
+  for (const t of _transactions) {
+    if (t.accountId !== id && t.toAccountId !== id)
+      continue
+    total++
+    if (t.type === 'transfer')
+      transfer++
+  }
+  return { total, transfer }
+}
+
+/**
+ * 账户迁移（删除账户时调用，语义见账户管理页）
+ * ─────────────────────────────────────────────
+ *  - 普通收支：转挂到目标账户，账户没了但账还在
+ *  - 转账笔：两端都是账户，缺了一端就讲不通，直接删除（否则会出现 A→A 的脏数据）
+ *
+ * @returns migrated 迁移的收支笔数 / removed 一并删除的转账笔数
+ */
+export function mockReassignAccount(fromId: number, toId: number): { migrated: number, removed: number } {
+  const now = Date.now()
+  let migrated = 0
+  const keep: Transaction[] = []
+  let removed = 0
+
+  for (const t of _transactions) {
+    if (t.type === 'transfer' && (t.accountId === fromId || t.toAccountId === fromId)) {
+      removed++
+      continue
+    }
+    if (t.accountId === fromId) {
+      keep.push({ ...t, accountId: toId, updatedAt: now })
+      migrated++
+    }
+    else {
+      keep.push(t)
+    }
+  }
+  _transactions = keep
+  return { migrated, removed }
 }
 
 export function mockCreateTransaction(input: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Transaction {

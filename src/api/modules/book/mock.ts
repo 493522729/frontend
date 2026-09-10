@@ -1,6 +1,7 @@
 import type { Book, BookWithStats } from '@/types/book'
 import { BOOK_SEEDS } from '@/api/mock-books'
-import { mockGetAllTransactions, mockListAccounts } from '@/api/modules/transaction/mock'
+import { mockListAccounts } from '@/api/modules/account/mock'
+import { mockGetAllTransactions } from '@/api/modules/transaction/mock'
 
 /**
  * 账本 mock 数据源（可写版本）

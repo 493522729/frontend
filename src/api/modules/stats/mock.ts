@@ -11,7 +11,16 @@
  */
 
 import type { TransactionType } from '@/enums/transaction'
-import type { CategorySlice, DashboardOverview, DashboardQuery, TrendPoint } from '@/types/stats'
+import type {
+  AccountBalance,
+  CategorySlice,
+  DashboardOverview,
+  DashboardQuery,
+  NetWorthPoint,
+  NetWorthQuery,
+  NetWorthTrend,
+  TrendPoint,
+} from '@/types/stats'
 import type { Category, Transaction } from '@/types/transaction'
 import { percentOf, sumCents } from '@/utils/money'
 import {
@@ -22,8 +31,9 @@ import {
   parseMonth,
   today,
 } from '@/utils/temporal'
+import { mockListAccounts } from '../account/mock'
 import { mockListCategories } from '../category/mock'
-import { mockGetAllTransactions, mockListAccounts } from '../transaction/mock'
+import { mockGetAllTransactions } from '../transaction/mock'
 
 /** 环图取前 N 个分类，其余合并为「其他」 */
 const TOP_N = 6
@@ -45,6 +55,33 @@ function momPercent(current: number, previous: number): number {
   if (previous === 0)
     return 0
   return Math.round(((current - previous) / previous) * 10000) / 100
+}
+
+/**
+ * 变化百分比：(现值 - 基值) / |基值| × 100
+ *
+ * 分母刻意取绝对值：净资产为负（资不抵债）时，用负数做分母会算出
+ * 「明明又亏了却显示 +30%」这种符号相反的荒唐结果。
+ * 基值为 0 时返回 0 —— 从 0 到有是无穷大，展示出来没有意义。
+ */
+function percentChange(current: number, baseValue: number): number {
+  if (baseValue === 0)
+    return 0
+  return Math.round(((current - baseValue) / Math.abs(baseValue)) * 10000) / 100
+}
+
+/**
+ * 站在**转出端账户**视角，这笔流水让它余额变动多少（正 = 增加）
+ *
+ * 转账在这里是 -amount（钱离开了这个账户）；转入端在调用处单独 +amount，
+ * 因为一笔转账同时影响两个账户，不是一个变量能表达完的。
+ */
+function signedAmount(t: Transaction, accountId: number): number {
+  if (t.type === 'income')
+    return t.amount
+  if (t.type === 'expense')
+    return -t.amount
+  return accountId === t.accountId ? -t.amount : t.amount
 }
 
 /**
@@ -174,6 +211,63 @@ export function mockGetDashboardOverview(query: DashboardQuery = {}): DashboardO
 }
 
 /**
+ * 账户余额表（US-004 账户体系的核心派生数据）
+ * ====================================================================
+ * 余额**不落库**，由「期初 + 流水」现算 —— 这样改一笔流水、删一笔转账，
+ * 余额立刻跟着变，不存在「账户表和流水表对不上账」的可能。
+ *
+ * 口径：余额 = 期初 + 收入 - 支出 - 转出 + 转入
+ *   - 信用卡没有期初，支出让它变负（负余额 = 欠款），可用额度 = 额度 + 余额
+ *   - 转账在转出端记 -、转入端记 +：单账户视角钱真的走了，全账本视角一进一出抵消
+ *
+ * 真后端落地时这是一条 group by 的 SQL（或账户表冗余字段 + 流水触发器），
+ * 前端调用方不需要知道它是算出来的还是查出来的。
+ */
+export function mockGetAccountBalances(bookId?: number): AccountBalance[] {
+  const accounts = mockListAccounts(bookId)
+  const all = mockGetAllTransactions(bookId)
+
+  // 先给每个账户铺零值：即使一笔流水都没有，也要返回余额（= 期初），
+  // 否则新建的账户在页面上会"不存在"，而不是显示 0。
+  const stats = new Map<number, { income: number, expense: number, transferIn: number, transferOut: number, txnCount: number }>()
+  for (const a of accounts)
+    stats.set(a.id, { income: 0, expense: 0, transferIn: 0, transferOut: 0, txnCount: 0 })
+
+  for (const t of all) {
+    const from = stats.get(t.accountId)
+    if (from) {
+      from.txnCount++
+      if (t.type === 'income')
+        from.income += t.amount
+      else if (t.type === 'expense')
+        from.expense += t.amount
+      else
+        from.transferOut += t.amount // 转账：钱离开转出账户
+    }
+    if (t.toAccountId != null) {
+      const to = stats.get(t.toAccountId)
+      if (to) {
+        to.txnCount++
+        to.transferIn += t.amount // 转账：钱进入转入账户
+      }
+    }
+  }
+
+  return accounts.map((a) => {
+    const s = stats.get(a.id)!
+    return {
+      accountId: a.id,
+      balance: a.initBalance + s.income - s.expense - s.transferOut + s.transferIn,
+      income: s.income,
+      expense: s.expense,
+      transferIn: s.transferIn,
+      transferOut: s.transferOut,
+      txnCount: s.txnCount,
+    }
+  })
+}
+
+/**
  * 全账本总资产净值（跨账本聚合，不受 bookId 过滤）
  * ====================================================================
  *
@@ -190,4 +284,145 @@ export function mockGetTotalNetAssets(): number {
   return sumCents(allAccounts.map(a => a.initBalance))
     + sumByType(allTxns, 'income')
     - sumByType(allTxns, 'expense')
+}
+
+/**
+ * 资产趋势（净值走势）
+ * ====================================================================
+ * 把「当前净资产」这一个数字，按月摊成一条曲线 —— 用户真正想知道的是
+ * 「我这一年是攒下钱了还是在漏财」，一个时点值回答不了。
+ *
+ * 算法：一次遍历流水 → 落到「账户 × 月份」的变动矩阵 → 按月累加出每月末的
+ * 账户余额 → 汇总成总资产 / 负债 / 净资产。
+ *   为什么不是每个月 filter 一遍全量流水：那是 O(月数 × 流水数)，
+ *   24 个月 × 1w 笔就是 24w 次比较；做成矩阵是 O(流水数 + 月数 × 账户数)。
+ *
+ * 两个必须守住的口径（都有单测盯着）：
+ *   1. 最后一个点 === mockGetDashboardOverview().netAssets（两页数字必须同一个）
+ *   2. 净资产 === 总资产 - 负债（拆分不能拆出对不上的账）
+ *
+ * 真后端落地时这是一条「按月 group by + 窗口函数」的 SQL，前端照样只拿结果。
+ */
+export function mockGetNetWorthTrend(query: NetWorthQuery = {}): NetWorthTrend {
+  const months = Math.max(1, Math.trunc(query.months ?? 12))
+  const accounts = mockListAccounts(query.bookId)
+  const all = mockGetAllTransactions(query.bookId)
+
+  // 时间轴：以当月为终点往前推 months 个月（正序）
+  const list = lastNMonths(months)
+  const monthIndex = new Map<string, number>(list.map((m, i) => [formatMonth(m), i]))
+  const monthKeys = list.map(m => formatMonth(m))
+  const firstMonthStart = formatDate(monthRange(list[0]!).start)
+
+  // 账户维度：base = 期初 + 区间之前发生的流水；delta = 每个月的净变动
+  const zeros = (): number[] => Array.from<number>({ length: months }).fill(0)
+
+  const base = new Map<number, number>()
+  const delta = new Map<number, number[]>()
+  for (const a of accounts) {
+    base.set(a.id, a.initBalance)
+    delta.set(a.id, zeros())
+  }
+
+  // 收支维度：柱状图用，纯当月发生额（不含转账 —— 转账不增不减净值）
+  const monthlyIncome = zeros()
+  const monthlyExpense = zeros()
+
+  for (const t of all) {
+    const idx = monthIndex.get(t.transDate.slice(0, 7))
+
+    // 区间之前的流水：全部压进基线，这样曲线起点才是「真实的历史家底」，
+    // 而不是「账户期初」这个不随时间变化的值
+    if (idx == null) {
+      if (t.transDate >= firstMonthStart)
+        continue // 未来月（mock 不会生成，真数据可能存在）不计入任何桶
+      const b = base.get(t.accountId)
+      if (b != null)
+        base.set(t.accountId, b + signedAmount(t, t.accountId))
+      if (t.toAccountId != null) {
+        const to = base.get(t.toAccountId)
+        if (to != null)
+          base.set(t.toAccountId, to + t.amount)
+      }
+      continue
+    }
+
+    const d = delta.get(t.accountId)
+    if (d != null)
+      d[idx]! += signedAmount(t, t.accountId)
+    if (t.toAccountId != null) {
+      const to = delta.get(t.toAccountId)
+      if (to != null)
+        to[idx]! += t.amount // 转账：钱进入转入账户
+    }
+
+    if (t.type === 'income')
+      monthlyIncome[idx]! += t.amount
+    else if (t.type === 'expense')
+      monthlyExpense[idx]! += t.amount
+  }
+
+  // ── 按月累加：月末时点快照 ────────────────────────────
+  const running = new Map<number, number>(base)
+  const points: NetWorthPoint[] = []
+  let prevNet = sumCents([...running.values()]) // 区间起点净资产（第一个月的上月末）
+  const startNetAssets = prevNet
+
+  for (let i = 0; i < months; i++) {
+    let assets = 0
+    let debt = 0
+    for (const a of accounts) {
+      const id = a.id
+      const next = running.get(id)! + delta.get(id)![i]!
+      running.set(id, next)
+      // 信用卡刷爆时余额为负：那不是「负资产」，是负债。
+      // 分开设总资产和负债，净资产 = 总资产 - 负债 才讲得通。
+      if (next >= 0)
+        assets += next
+      else
+        debt += -next
+    }
+
+    const netAssets = assets - debt
+    points.push({
+      month: monthKeys[i]!,
+      netAssets,
+      assets,
+      debt,
+      // 净增取曲线上的真实差值：比 income-expense 更稳（真数据出现跨账本
+      // 转账等脏数据时，曲线仍然自洽）
+      netChange: netAssets - prevNet,
+      income: monthlyIncome[i]!,
+      expense: monthlyExpense[i]!,
+    })
+    prevNet = netAssets
+  }
+
+  // ── 区间摘要（页面不再自己算，避免各页面口径漂移）──────
+  const endNetAssets = points.at(-1)?.netAssets ?? startNetAssets
+  let peak: NetWorthPoint | null = null
+  let trough: NetWorthPoint | null = null
+  let maxDrawdown = 0
+  let runningMax = Number.NEGATIVE_INFINITY
+
+  for (const p of points) {
+    if (!peak || p.netAssets > peak.netAssets)
+      peak = p
+    if (!trough || p.netAssets < trough.netAssets)
+      trough = p
+    // 最大回撤：站在历史最高点往下看，最深的一次跌幅
+    runningMax = Math.max(runningMax, p.netAssets)
+    maxDrawdown = Math.max(maxDrawdown, runningMax - p.netAssets)
+  }
+
+  return {
+    points,
+    startNetAssets,
+    endNetAssets,
+    change: endNetAssets - startNetAssets,
+    changePercent: percentChange(endNetAssets, startNetAssets),
+    peak,
+    trough,
+    maxDrawdown,
+  }
 }

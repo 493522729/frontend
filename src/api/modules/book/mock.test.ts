@@ -9,13 +9,13 @@
  */
 import { describe, expect, it } from 'vitest'
 import { BOOK_SEEDS } from '@/api/mock-books'
+import { mockListAccounts } from '@/api/modules/account/mock'
 import {
   mockListBooks,
   mockSetDefaultBook,
 } from '@/api/modules/book/mock'
 import {
   mockGetAllTransactions,
-  mockListAccounts,
   mockListTransactions,
 } from '@/api/modules/transaction/mock'
 
