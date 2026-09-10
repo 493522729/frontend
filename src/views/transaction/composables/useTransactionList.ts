@@ -20,6 +20,7 @@ import type { HumanizedError } from '@/utils/errorHumanizer'
 import { NButton, useMessage, useNotification } from 'naive-ui'
 import { h, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { applyRulesToTransaction } from '@/api/modules/rule'
 import {
   batchDeleteTransactions,
   batchUpdateCategory,
@@ -32,6 +33,7 @@ import { withRetry } from '@/composables/useRetryable'
 import { TRANSACTION_TYPES } from '@/enums/transaction'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
+import { useRuleStore } from '@/stores/modules/rule'
 import { humanizeError } from '@/utils/errorHumanizer'
 
 export interface FilterState {
@@ -49,6 +51,7 @@ export interface FilterState {
 export function useTransactionList() {
   const dict = useDictStore()
   const book = useBookStore()
+  const ruleStore = useRuleStore()
   const route = useRoute()
   const router = useRouter()
 
@@ -245,13 +248,27 @@ export function useTransactionList() {
       return
     const before: Transaction = list.value[idx]!
     const optimistic: Transaction = { ...before, ...(patch as Partial<Transaction>) }
+    // 规则引擎钩子（US-010）：保存时按启用顺序跑规则链，规则改的字段并入 patch 一次性提交。
+    // - 仅比对规则改的部分，不动用户原本没动的字段；
+    // - 失败时 rollback 到 `before`（含规则改前的状态），不污染 mock 数据。
+    const { txn: ruled } = applyRulesToTransaction(optimistic, ruleStore.list)
+    const ruleDelta: Partial<Transaction> = {}
+    for (const k of Object.keys(optimistic) as (keyof Transaction)[]) {
+      const a = optimistic[k]
+      const b = ruled[k]
+      // 用 Object.is 比较，避免结构相同时误判
+      if (!Object.is(a, b))
+        (ruleDelta as Record<string, unknown>)[k] = b
+    }
+    const finalPatch = { ...patch, ...ruleDelta }
+    const optimisticWithRules: Transaction = { ...optimistic, ...ruleDelta }
     // 必须用「新数组替换」而非 list.value.splice 原地改：
     // vxe-grid 对 data 的 watcher 是浅监听（只比对引用），原地 splice 不触发它的
     // handleDataChange，单元格显示态会一直读 vxe 内部的旧快照，导致「改了和没改一样」。
     // 换成新引用后 gridOptions computed 重算、v-bind 重新下发，vxe 才重渲染拿到新值。
-    list.value = list.value.map(t => (t.id === id ? optimistic : t))
+    list.value = list.value.map(t => (t.id === id ? optimisticWithRules : t))
     try {
-      const updated = await updateTransaction(id, patch)
+      const updated = await updateTransaction(id, finalPatch)
       list.value = list.value.map(t => (t.id === id ? updated : t))
     }
     catch (err) {
