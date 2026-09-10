@@ -17,6 +17,7 @@ import type { VxeGridProps } from 'vxe-table'
 import type { Transaction } from '@/types/transaction'
 import { useMessage, useNotification } from 'naive-ui'
 import { computed, getCurrentInstance, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useHotkey } from '@/composables/useHotkey'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
 import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transaction'
 import { useDictStore } from '@/stores/modules/dict'
@@ -103,62 +104,44 @@ onMounted(() => {
     gridResizeObserver = new ResizeObserver(syncGridHeight)
     gridResizeObserver.observe(gridHostRef.value)
   }
-  // ── 筛选快捷键（PRD §15.2.2 体验补强） ──────────────────────
-  //  设计：
-  //   - Cmd/Ctrl+K：聚焦关键词搜索框（filter-area 内第一个 NInput）
-  //   - 1 / 2 / 3：切「全部 / 待确认 / 已记」状态筛选
-  //   - Esc：清空筛选条件
-  //  让权原则（与表格键盘导航一致）：
-  //   - input/select/textarea/contentEditable 正在被输入时不接管（用户打字优先）
-  //   - 命令修饰键（Cmd/Ctrl）只拦截 K，其他命令组合（如 Cmd+R 刷新）放行
-  document.addEventListener('keydown', onShortcutKeydown)
 })
 
 onBeforeUnmount(() => {
   gridResizeObserver?.disconnect()
   gridResizeObserver = null
-  document.removeEventListener('keydown', onShortcutKeydown)
 })
 
-/**
- * 文档级快捷键 handler：与 .grid-host 的 onGridKeydown 并存但分工不同
- *  - onGridKeydown 处理表格内的 ↑↓/Enter/Esc
- *  - onShortcutKeydown 处理 Cmd+K / 1/2/3 / 全局 Esc
- */
-function onShortcutKeydown(e: KeyboardEvent) {
-  const target = e.target as HTMLElement | null
-  const tag = target?.tagName
-  const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable === true
-  // Cmd+K / Ctrl+K：聚焦关键词框
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-    e.preventDefault()
-    const kwInput = document.querySelector<HTMLInputElement>('.filter-area input')
-    kwInput?.focus()
-    kwInput?.select()
-    return
-  }
-  // 数字键 1/2/3 切状态：仅在非输入态生效
-  if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    if (e.key === '1') {
-      filter.status = 'all'
-      applyFilter({})
-      return
-    }
-    if (e.key === '2') {
-      filter.status = 'pending'
-      applyFilter({})
-      return
-    }
-    if (e.key === '3') {
-      filter.status = 'confirmed'
-      applyFilter({})
-      return
-    }
-  }
-  // Esc：清空筛选（非输入态，且筛选有内容时）
-  if (e.key === 'Escape' && !typing && hasActiveFilter(filter)) {
+// ── 筛选快捷键（PRD §15.2.2 体验补强 / 架构 §4.2）──────────────
+//   - `/`：聚焦关键词搜索框（架构 §4.2：「/」= 列表页聚焦搜索）
+//   - 1 / 2 / 3：切「全部 / 待确认 / 已记」状态筛选
+//   - Esc：清空筛选条件
+//
+// ⚠️ 聚焦搜索原本占用 ⌘K，与全局「⌘K 记一笔」撞车：两处监听分别挂在
+// document 与 window 上，preventDefault() 不阻止冒泡，在交易页按一次 ⌘K
+// 会**同时**聚焦搜索框并弹出记账弹层。改回架构规定的 `/` 后冲突消失。
+//
+// 统一走 useHotkey 的另一个收益：单键在输入态自动豁免，
+// 不必在每个页面各写一遍 typing 判断（架构 §4.2 铁律）。
+useHotkey('/', focusKeyword)
+useHotkey('1', () => setStatusFilter('all'))
+useHotkey('2', () => setStatusFilter('pending'))
+useHotkey('3', () => setStatusFilter('confirmed'))
+useHotkey('Escape', () => {
+  if (hasActiveFilter(filter))
     resetFilter()
-  }
+})
+
+/** 聚焦关键词搜索框并选中已有内容（方便直接改写） */
+function focusKeyword() {
+  const kwInput = document.querySelector<HTMLInputElement>('.filter-area input')
+  kwInput?.focus()
+  kwInput?.select()
+}
+
+/** 切状态筛选：与点击「全部 / 待确认 / 已记」等价 */
+function setStatusFilter(status: typeof filter.status) {
+  filter.status = status
+  applyFilter({})
 }
 
 /** 是否有任何生效的筛选条件（用于 Esc 清空判断） */

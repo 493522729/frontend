@@ -3,13 +3,14 @@ import type { DropdownOption } from 'naive-ui'
 import { NDropdown, useMessage } from 'naive-ui'
 /**
  * 顶栏：侧边栏折叠开关 + 账本切换器 + 主题切换 + 用户菜单
- * Cmd/Ctrl+B 切换侧边栏（架构文档 4.2，useHotkey 落地后迁移过去）
+ * Cmd/Ctrl+B 切换侧边栏（架构文档 4.2，已迁到 useHotkey 统一注册）
  *
  * 用户菜单用 NDropdown 触发：显示昵称 + 退出登录 + 跳到设置（改密入口）。
  * 退出登录清 token + 跳 /login（带 redirect 让登录后回到原页面）。
  */
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useHotkey } from '@/composables/useHotkey'
 import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
 import BookSwitcher from './BookSwitcher.vue'
@@ -19,12 +20,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const message = useMessage()
 
-useEventListener(window, 'keydown', (e: KeyboardEvent) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
-    e.preventDefault()
-    appStore.toggleSidebar()
-  }
-})
+useHotkey('Cmd+B', () => appStore.toggleSidebar())
 
 /** 顶栏头像：取昵称首字，无头像时显示首字占位 */
 const avatarText = computed(() => {

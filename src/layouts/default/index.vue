@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import CommandPalette from '@/components/business/command-palette/index.vue'
 import QuickEntry from '@/components/business/quick-entry/index.vue'
+import { useHotkey } from '@/composables/useHotkey'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import Header from './Header/index.vue'
 import Sidebar from './Sidebar/index.vue'
@@ -14,12 +16,10 @@ import Sidebar from './Sidebar/index.vue'
 const quickEntry = useQuickEntryStore()
 
 // Cmd/Ctrl+K 全局唤起记账（浏览器默认是聚焦地址栏，web app 里拦截为记账入口）
-useEventListener(window, 'keydown', (e: KeyboardEvent) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-    e.preventDefault()
-    quickEntry.open()
-  }
-})
+// 走 useHotkey 统一注册：带 ⌘ 的组合在输入态也生效，语义不在这里重复实现
+useHotkey('Cmd+K', () => quickEntry.open())
+// N：架构 §4.2 规定的记账别名（单键，输入态自动豁免，不会打断打字）
+useHotkey('N', () => quickEntry.open())
 </script>
 
 <template>
@@ -49,6 +49,8 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
     </button>
 
     <QuickEntry />
+    <!-- 命令面板（⌘⇧P）：与记账弹层同层挂载，登录页不挂 -->
+    <CommandPalette />
   </div>
 </template>
 
