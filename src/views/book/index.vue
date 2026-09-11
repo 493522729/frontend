@@ -3,6 +3,7 @@ import type { BookType } from '@/enums/book'
 import type { BookWithStats } from '@/types/book'
 import { NButton, NInput, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { BOOK_TYPE_META, BOOK_TYPES } from '@/enums/book'
 import { useBookStore } from '@/stores/modules/book'
 
@@ -20,6 +21,7 @@ const message = useMessage()
 
 const books = computed<BookWithStats[]>(() => book.books)
 const currentId = computed(() => book.currentBookId)
+const showEmpty = computed(() => !book.loading && books.value.length === 0)
 
 const typeOptions = BOOK_TYPES.map(t => ({ label: BOOK_TYPE_META[t].label, value: t }))
 
@@ -128,7 +130,7 @@ onMounted(() => book.ensureLoaded())
       </NButton>
     </header>
 
-    <div class="book-grid">
+    <div v-if="books.length > 0" class="book-grid">
       <article
         v-for="b in books"
         :key="b.id"
@@ -174,6 +176,17 @@ onMounted(() => book.ensureLoaded())
         </div>
       </article>
     </div>
+
+    <EmptyState
+      v-else-if="showEmpty"
+      variant="ledger"
+      title="还没有账本"
+      desc="建一个账本开始记账 —— 日常开销、宝宝账本、旅行账本都能各管各的。"
+    >
+      <NButton type="primary" @click="openCreate">
+        + 新建账本
+      </NButton>
+    </EmptyState>
 
     <!-- 新增 / 编辑 -->
     <NModal
