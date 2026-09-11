@@ -155,6 +155,9 @@ async function onToggle(rule: Rule) {
 function addCondition() {
   form.conditions.push({ field: 'note', op: 'contains', value: '' })
 }
+function removeCondition(idx: number) {
+  form.conditions.splice(idx, 1)
+}
 function onConditionFieldChange(idx: number, field: RuleField) {
   const c = form.conditions[idx]!
   c.field = field
@@ -162,8 +165,8 @@ function onConditionFieldChange(idx: number, field: RuleField) {
   const ops = operatorsForField(field)
   if (!ops.includes(c.op))
     c.op = ops[0]!
-  if (c.value === '' || c.value == null)
-    c.value = FIELD_DEFAULTS[field]
+  // 切换字段时清空 value，避免金额 5000 切换到类型后显示 5000 这类不匹配残留
+  c.value = ''
 }
 
 function addAction() {
@@ -388,9 +391,12 @@ const hasResult = computed(() => ruleStore.list.length > 0)
                 :options="operatorOptions(c.field)"
                 style="width: 110px"
               />
-              <NInputNumber v-if="c.field === 'amount'" v-model:value="c.value as number" :show-button="false" style="width: 120px" />
-              <NSelect v-else-if="c.field === 'type'" :value="c.value as string" :options="TRANSACTION_TYPE_OPTIONS" style="width: 140px" @update:value="v => (c.value = String(v))" />
+              <NInputNumber v-if="c.field === 'amount'" v-model:value="c.value as number" :show-button="false" placeholder="金额（分）" style="width: 120px" />
+              <NSelect v-else-if="c.field === 'type'" :value="c.value as string" :options="TRANSACTION_TYPE_OPTIONS" placeholder="选择类型" style="width: 140px" @update:value="v => (c.value = String(v))" />
               <NInput v-else :value="c.value as string" :placeholder="FIELD_DEFAULTS[c.field]" style="flex: 1" @update:value="v => (c.value = String(v))" />
+              <NButton v-if="form.conditions.length > 1" text type="error" @click="removeCondition(idx)">
+                删除
+              </NButton>
             </div>
           </NSpace>
         </div>
@@ -405,11 +411,11 @@ const hasResult = computed(() => ruleStore.list.length > 0)
           <NSpace vertical size="small">
             <div v-for="(a, idx) in form.actions" :key="idx" class="form-row">
               <NSelect :value="a.type" :options="RULE_ACTIONS.map(o => ({ label: o.label, value: o.value }))" style="width: 140px" @update:value="v => (a.type = v as typeof a.type)" />
-              <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId as number" :options="categorySelectOptions" placeholder="选择分类" style="flex: 1" @update:value="v => (a.payload.categoryId = v)" />
+              <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId || undefined" :options="categorySelectOptions" placeholder="选择分类" clearable style="flex: 1" @update:value="v => (a.payload.categoryId = v || 0)" />
               <NInput v-else-if="a.type === 'appendNote'" :value="a.payload.suffix as string" placeholder="追加文本" style="flex: 1" @update:value="v => (a.payload.suffix = v)" />
               <NInput v-else-if="a.type === 'addTag'" :value="a.payload.tag as string" placeholder="标签名" style="flex: 1" @update:value="v => (a.payload.tag = v)" />
               <NInput v-else :value="a.payload.message as string" placeholder="通知文案" style="flex: 1" @update:value="v => (a.payload.message = v)" />
-              <NButton text type="error" @click="removeAction(idx)">
+              <NButton v-if="form.actions.length > 1" text type="error" @click="removeAction(idx)">
                 删除
               </NButton>
             </div>
