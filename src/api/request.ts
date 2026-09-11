@@ -1,5 +1,6 @@
-import type { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import type { Result } from './types'
+import axios, { AxiosError } from 'axios'
 /**
  * 请求层核心 —— axios 封装
  * ====================================================================
@@ -11,7 +12,6 @@ import type { Result } from './types'
  *      失败则统一翻译成 ApiError（network / http / business 三类）
  *   4. 401 令牌过期：自动用 refreshToken 换新 token，且「并发请求只刷新一次」
  */
-import axios from 'axios'
 import { getActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/modules/auth'
 import { ApiError, BUSINESS_CODE } from './types'
@@ -141,8 +141,30 @@ instance.interceptors.response.use(
     const body = response.data
 
     // 后端约定：哪怕 HTTP 200，只要业务 code 非成功就是「业务失败」
-    if (body.code !== BUSINESS_CODE.SUCCESS)
+    if (body.code !== BUSINESS_CODE.SUCCESS) {
+      // 关键：后端用「HTTP 200 + 业务码 40101/40100」表达登录态失效
+      // （Spring 的 Result<T> 常见约定，而非返回真正的 HTTP 401）。
+      // 这类响应会先进入「成功分支」，必须在这里手动包装成带 response 的
+      // axios 错误，丢给下面的响应拦截器「错误分支」，复用其统一的
+      // 「刷新 token / 跳登录页」流程；否则只会作为普通业务错误上抛
+      // （还常被误判成网络错误），永远触发不了跳转。
+      if (body.code === BUSINESS_CODE.TOKEN_EXPIRED || body.code === BUSINESS_CODE.UNAUTHORIZED) {
+        throw new AxiosError(
+          body.message,
+          'ERR_TOKEN_EXPIRED',
+          response.config,
+          undefined,
+          {
+            data: body,
+            status: 401,
+            statusText: 'Unauthorized',
+            headers: response.headers,
+            config: response.config,
+          } as AxiosResponse<Result>,
+        )
+      }
       throw new ApiError('business', body.message, body.code, body.data)
+    }
 
     /**
      * 解包：把 Result.data 直接交出去。
