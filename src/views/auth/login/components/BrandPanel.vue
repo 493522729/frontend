@@ -153,10 +153,15 @@ const features: Feature[] = [
   padding: 64px 56px;
   display: flex;
   flex-direction: column;
+  /* 登录页左侧是「海报」品牌区，永远深底，不能随主题 token 的语义反转而变浅。
+     因此这里用 SCSS 变量（固定字面色值），而非会随 html.dark 反转的 CSS 变量。
+     模板里的 SVG 品牌渐变仍走 CSS 变量，所以把常用的两个浅色档位也锁死。 */
+  --lz-primary-300: #{$primary-300};
+  --lz-primary-500: #{$primary-500};
   background:
-    radial-gradient(ellipse at top left, rgb(var(--lz-primary-rgb) / 30%), transparent 55%),
+    radial-gradient(ellipse at top left, rgba($primary-500, 0.3), transparent 55%),
     radial-gradient(ellipse at bottom right, rgb(144 180 226 / 26%), transparent 55%),
-    linear-gradient(135deg, var(--lz-primary-900) 0%, var(--lz-primary-800) 55%, var(--lz-primary-700) 100%);
+    linear-gradient(135deg, $primary-900 0%, $primary-800 55%, $primary-700 100%);
   color: #e6eefb;
   overflow: hidden;
   isolation: isolate;
@@ -175,7 +180,7 @@ const features: Feature[] = [
     left: -100px;
     width: 360px;
     height: 360px;
-    background: radial-gradient(circle, rgb(var(--lz-primary-rgb) / 45%), transparent 60%);
+    background: radial-gradient(circle, rgba($primary-500, 0.45), transparent 60%);
     animation: float 9s ease-in-out infinite;
   }
 
@@ -200,7 +205,7 @@ const features: Feature[] = [
   inset: 0;
   width: 100%;
   height: 100%;
-  color: var(--lz-primary-200);
+  color: $primary-200;
   z-index: 0;
 }
 
@@ -209,7 +214,7 @@ const features: Feature[] = [
   position: absolute;
   z-index: 1;
   pointer-events: none;
-  color: var(--lz-primary-300);
+  color: $primary-300;
 }
 
 .shape-circle {
@@ -285,8 +290,8 @@ const features: Feature[] = [
      深底上用 primary-300（浅蓝）做强调，保证与白字有足够对比又不刺眼 */
   .line-2 em {
     font-style: normal;
-    color: var(--lz-primary-300);
-    -webkit-text-fill-color: var(--lz-primary-300);
+    color: $primary-300;
+    -webkit-text-fill-color: $primary-300;
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
@@ -332,7 +337,7 @@ const features: Feature[] = [
   place-items: center;
   background: rgb(255 255 255 / 10%);
   border: 1px solid rgb(255 255 255 / 14%);
-  color: var(--lz-primary-200);
+  color: $primary-200;
   flex-shrink: 0;
   @include transition-paint(var(--lz-duration-slow));
 
@@ -343,7 +348,7 @@ const features: Feature[] = [
 }
 
 .feat:hover .feat-icon {
-  background: linear-gradient(135deg, var(--lz-primary-400), var(--lz-primary-600));
+  background: linear-gradient(135deg, $primary-400, $primary-600);
   color: #fff;
   transform: scale(1.06);
   border-color: transparent;
