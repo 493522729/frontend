@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Category } from '@/types/transaction'
-import { NButton, NColorPicker, NInput, NModal, NRadioButton, NRadioGroup, NSelect, useMessage } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   createCategory,
@@ -511,7 +511,7 @@ watch(() => form.type, () => {
   padding: var(--lz-content-padding);
   max-width: 960px;
   margin: 0 auto;
-  height: 100%; // 填满内容区，让分类盒子内部滚动而非整页滚动
+  height: calc(100% - 50px); // 填满内容区，让分类盒子内部滚动而非整页滚动
 }
 
 .page-head {
@@ -537,7 +537,6 @@ watch(() => form.type, () => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: var(--lz-space-5);
-  align-items: start; // 高度按内容，不强行撑满一行
   flex: 1; // 占满剩余高度
   min-height: 0; // 允许在 flex 容器内收缩，否则内部滚动失效
 }
@@ -590,9 +589,18 @@ watch(() => form.type, () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1; // 撑满 cat-group 剩余高度
   min-height: 0;
-  max-height: min(45vh, 360px); // 限制最大高度，避免分类面板过高导致页面滚动
   overflow-y: auto; // 分类多时盒子内部滚动，不撑高页面
+}
+
+// 空态：占满分类列表高度并垂直居中（仅当无分类时渲染）
+.cat-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .cat-row {
