@@ -509,3 +509,54 @@ img 缺 alt / button·a 无可访问名 / input 无 label / 标题跳级 / lang 
 1. **token 对账脚本**（引用集 vs 定义集求差）值得进常规门禁，幽灵变量靠肉眼永远抓不完。
 2. **审计要双通道**：hex 一遍、rgba/rgb 一遍；`#fff` 白字一遍、亮底色一遍——每类误报都提前想好判据，别被吓到或漏掉。
 3. **截图走查用 agent-browser**：`open → snapshot -i → click @ref → screenshot`，亮暗切换点顶栏按钮即可，9 页循环 2 分钟。
+
+---
+
+## 17. US-011 命令面板 + 快捷键收口（2026-09-10）
+
+### 17.1 先修事故：⌘K 一个键触发两个动作
+
+老赵一句「Cmd+K 不是记一笔的快捷键吗」点破了键位冲突。核查结果：
+
+| 位置 | ⌘K 行为 |
+|---|---|
+| `layouts/default/index.vue`（`useEventListener(window)`） | 唤起快速记账弹层 |
+| `views/transaction/index.vue`（`document.addEventListener`） | 聚焦关键词搜索框 |
+
+**根因**：`preventDefault()` 只阻止默认行为，**不阻止事件冒泡**。document 上的 handler 先跑，事件继续冒泡到 window，于是两个动作同时执行 —— 在交易页按一次 ⌘K = 搜索框聚焦 + 记账弹层弹出。
+
+**修法**：交易页的「聚焦搜索」改回架构 §4.2 原本规定的 `/` 键（⌘K 归记账独占）。顺带把三处裸写监听全部收口到 `useHotkey`。
+
+### 17.2 useHotkey：把「输入态豁免」只写一遍
+
+架构 §4.2 早有铁律「统一走 useHotkey 注册，禁止组件内裸写 addEventListener」，但此前三处各自实现、规则还不一致（交易页那处压根没判断输入态）。新建 `composables/useHotkey.ts`：
+
+```ts
+// 修饰键严格匹配：要求 ⌘⇧P 时只按 ⌘P 不算；Cmd 与 Ctrl 等价（跨平台写一处）
+useHotkey('Cmd+Shift+P', toggle) // 带修饰键 → 输入态仍生效
+useHotkey('N', openQuickEntry) // 单键 → 输入态自动让位
+useHotkey('/', focusKeyword, { allowInInput: false }) // 可显式覆盖
+```
+
+**默认约定的取舍**（不是拍脑袋，是对标 VS Code）：
+- 带 `Cmd/Ctrl/Alt` 的组合在输入态**仍生效** —— 否则用户在搜索框里按 ⌘K 会觉得"快捷键失灵"
+- 单键（`N` `/` `1~9`）在输入态**让位** —— 否则打字时字母键误触发全局动作，这是快捷键最常见的事故
+
+### 17.3 命令面板实现要点
+
+- **状态用模块级单例 ref，不建 store**：面板只有一个实例、状态只有一个布尔值，不需要持久化/时间旅行，开 pinia store 是仪式性开销（与 `useBelowLg` 同款思路）。
+- **匹配算法抽纯函数** `utils/commands.ts`：不依赖 Vue，可直接单测（11 例）。评分梯度 110 全等 / 100 前缀 / 80 包含 / 60 关键词 / 40 子序列，同分按 `GROUP_ORDER`（操作→跳转→账本）再按原序 —— **稳定排序**，避免输入变化时列表乱跳。
+- **命令源复用路由 meta**，与侧边栏同一份数据（ADR-5 精神），不维护第二份菜单。
+- **键盘闭环**：↑↓ 循环选择、⏎ 执行、esc 关闭；`watch(activeIndex)` 里 `scrollIntoView({ block: 'nearest' })` 跟随。
+- **无障碍**：`role="dialog"` + listbox/option + `aria-activedescendant` 指向选中项 id。
+- **Esc 要 `stopPropagation()`**：否则面板打开时按 Esc 会同时触发页面级「清空筛选」。
+
+### 17.4 键位最终定案
+
+| 键 | 行为 | 说明 |
+|---|---|---|
+| `⌘⇧P` / `Ctrl+Shift+P` | 命令面板 | 老赵拍板：记账习惯不动，走 VS Code 标准键 |
+| `⌘K` / `Ctrl+K` | 记一笔 | 保持现状（最高频操作） |
+| `N` | 记一笔 | 架构 §4.2 原定主入口，作为单键别名补齐 |
+| `⌘B` | 折叠侧边栏 | 已迁到 useHotkey |
+| `/` | 列表页聚焦搜索 | 从 ⌘K 改回，冲突解除 |
