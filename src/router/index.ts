@@ -97,8 +97,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/screen/index.vue'),
         meta: {
           title: '可视化大屏',
-          icon: 'screen',
-          order: 20,
+          hidden: true,
           requiresAuth: true,
           layout: 'blank',
         },
