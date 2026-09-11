@@ -15,7 +15,7 @@
 import type { App } from 'vue'
 import type { VxeGridProps } from 'vxe-table'
 import type { Transaction } from '@/types/transaction'
-import { useMessage, useNotification } from 'naive-ui'
+import { useDialog, useMessage, useNotification } from 'naive-ui'
 import { computed, getCurrentInstance, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useHotkey } from '@/composables/useHotkey'
@@ -43,6 +43,7 @@ ensureVxeTable(app)
 
 const message = useMessage()
 const notification = useNotification()
+const dialog = useDialog()
 const settings = useSettingsStore()
 const dict = useDictStore()
 
@@ -456,13 +457,21 @@ function onCellClick(params: { rowIndex: number }) {
 
 // ── 单删 / 批量 ──
 async function onDeleteOne(id: number) {
-  try {
-    await removeOne(id)
-    message.success('已删除')
-  }
-  catch {
-    message.error('删除失败')
-  }
+  dialog.warning({
+    title: '删除交易',
+    content: '确定删除这笔交易吗？删除后无法恢复。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await removeOne(id)
+        message.success('已删除')
+      }
+      catch {
+        message.error('删除失败')
+      }
+    },
+  })
 }
 
 async function onBatchDelete() {
