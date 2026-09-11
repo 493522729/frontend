@@ -122,7 +122,7 @@ export const RULE_FIELDS: { label: string, value: RuleField }[] = [
 ]
 
 export const RULE_ACTIONS: { label: string, value: RuleActionType, hint: string }[] = [
-  { label: '修改分类', value: 'setCategory', hint: '改挂到指定分类（按分类 ID）' },
+  { label: '修改分类', value: 'setCategory', hint: '改挂到指定分类' },
   { label: '追加备注', value: 'appendNote', hint: '在备注末尾追加文本' },
   { label: '加标签', value: 'addTag', hint: '在备注前加 #tag' },
   { label: '弹通知', value: 'notify', hint: '触发后弹通知（纯函数仅标记）' },
@@ -133,3 +133,14 @@ export const TRANSACTION_TYPE_OPTIONS: { label: string, value: TransactionType }
   { label: '收入', value: 'income' },
   { label: '转账', value: 'transfer' },
 ]
+
+/** 操作符中文映射（UI 下拉与摘要展示用，底层仍存英文 key） */
+export const OPERATOR_LABELS: Record<RuleOperator, string> = {
+  contains: '包含',
+  equals: '等于',
+  startsWith: '开头是',
+  gt: '大于',
+  lt: '小于',
+  gte: '大于等于',
+  lte: '小于等于',
+}

@@ -278,7 +278,7 @@ export function useTransactionList() {
     // 规则引擎钩子（US-010）：保存时按启用顺序跑规则链，规则改的字段并入 patch 一次性提交。
     // - 仅比对规则改的部分，不动用户原本没动的字段；
     // - 失败时 rollback 到 `before`（含规则改前的状态），不污染 mock 数据。
-    const { txn: ruled } = applyRulesToTransaction(optimistic, ruleStore.list)
+    const { txn: ruled, executions } = applyRulesToTransaction(optimistic, ruleStore.list)
     const ruleDelta: Partial<Transaction> = {}
     for (const k of Object.keys(optimistic) as (keyof Transaction)[]) {
       const a = optimistic[k]
@@ -297,6 +297,20 @@ export function useTransactionList() {
     try {
       const updated = await updateTransaction(id, finalPatch)
       list.value = list.value.map(t => (t.id === id ? updated : t))
+      // 弹通知动作：交易保存成功后把命中的 notify 动作真正弹出来
+      for (const exec of executions) {
+        if (!exec.matched)
+          continue
+        for (const action of exec.appliedActions) {
+          if (action.type === 'notify' && action.payload.message) {
+            notification.info({
+              title: exec.ruleName,
+              content: String(action.payload.message),
+              duration: 4000,
+            })
+          }
+        }
+      }
     }
     catch (err) {
       list.value = list.value.map(t => (t.id === id ? before : t))

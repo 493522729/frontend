@@ -8,15 +8,17 @@
  * - 试算 Modal：拿样本交易跑一遍，返回每个规则的命中与改后差异
  */
 import type { Rule, RuleAction, RuleCondition, RuleField, RuleInput } from '@/types/rule'
-import type { Transaction } from '@/types/transaction'
+import type { Category, Transaction } from '@/types/transaction'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { runRule } from '@/api/modules/rule'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
+import { useDictStore } from '@/stores/modules/dict'
 import { useRuleStore } from '@/stores/modules/rule'
 import {
   FIELD_DEFAULTS,
+  OPERATOR_LABELS,
   operatorsForField,
   RULE_ACTIONS,
   RULE_FIELDS,
@@ -27,9 +29,12 @@ const message = useMessage()
 const dialog = useDialog()
 const ruleStore = useRuleStore()
 const bookStore = useBookStore()
+const dict = useDictStore()
 
 // ── 列表加载 ──────────────────────────────────────────────
-onMounted(() => ruleStore.load())
+onMounted(async () => {
+  await Promise.all([ruleStore.load(), dict.ensureCategories()])
+})
 
 // 全账本 option 的 value 用 0 表示，提交时若 === 0 → null（业务上「全账本」= 不绑账本）
 const ALL_BOOKS = 0
@@ -90,6 +95,12 @@ async function submitForm() {
   if (form.actions.length === 0) {
     message.warning('至少一个动作')
     return
+  }
+  for (const a of form.actions) {
+    if (a.type === 'setCategory' && Number(a.payload.categoryId) <= 0) {
+      message.warning('「修改分类」动作请选择目标分类')
+      return
+    }
   }
   // 兜底空 value：填字段默认值，避免跑时空字符串匹配所有
   for (const c of form.conditions) {
@@ -163,22 +174,54 @@ function removeAction(idx: number) {
 }
 
 function operatorOptions(field: RuleField) {
-  return operatorsForField(field).map(op => ({ label: op, value: op }))
+  return operatorsForField(field).map(op => ({ label: OPERATOR_LABELS[op], value: op }))
 }
 
+const fieldLabelMap = Object.fromEntries(RULE_FIELDS.map(f => [f.value, f.label]))
+const typeLabelMap = Object.fromEntries(TRANSACTION_TYPE_OPTIONS.map(t => [t.value, t.label]))
+
 function conditionPreview(c: RuleCondition): string {
-  return `${c.field} ${c.op} ${c.value}`
+  const field = fieldLabelMap[c.field] ?? c.field
+  const op = OPERATOR_LABELS[c.op] ?? c.op
+  let value = String(c.value)
+  if (c.field === 'type')
+    value = typeLabelMap[value] ?? value
+  return `${field} ${op} ${value}`
+}
+
+function categoryNameOf(id: number | string | undefined): string {
+  if (id == null || Number(id) <= 0)
+    return '未选择'
+  const cat = dict.categoryMap.get(Number(id))
+  return cat ? `${cat.icon} ${cat.name}` : `#${id}`
 }
 
 function actionPreview(a: RuleAction): string {
   if (a.type === 'setCategory')
-    return `分类→${a.payload.categoryId}`
+    return `分类→${categoryNameOf(a.payload.categoryId)}`
   if (a.type === 'appendNote')
     return `追加「${a.payload.suffix}」`
   if (a.type === 'addTag')
     return `加 #${a.payload.tag}`
   return `通知「${a.payload.message}」`
 }
+
+// 分类选择器选项：按支出/收入分组，根→二级缩进展示
+const categorySelectOptions = computed(() => {
+  const sort = (a: Category, b: Category) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+  const buildForType = (type: 'expense' | 'income') => {
+    const roots = dict.categories.filter(c => c.type === type && c.parentId == null).sort(sort)
+    const children: { label: string, value: number }[] = []
+    for (const r of roots) {
+      children.push({ label: `${r.icon} ${r.name}`, value: r.id })
+      const subs = dict.categories.filter(c => c.type === type && c.parentId === r.id).sort(sort)
+      for (const s of subs)
+        children.push({ label: `  ${s.icon} ${s.name}`, value: s.id })
+    }
+    return { type: 'group' as const, label: type === 'expense' ? '支出' : '收入', key: type, children }
+  }
+  return [buildForType('expense'), buildForType('income')]
+})
 
 // ── 试算 ──────────────────────────────────────────────────
 const showPreview = ref(false)
@@ -362,7 +405,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
           <NSpace vertical size="small">
             <div v-for="(a, idx) in form.actions" :key="idx" class="form-row">
               <NSelect :value="a.type" :options="RULE_ACTIONS.map(o => ({ label: o.label, value: o.value }))" style="width: 140px" @update:value="v => (a.type = v as typeof a.type)" />
-              <NInputNumber v-if="a.type === 'setCategory'" v-model:value="a.payload.categoryId as number" :show-button="false" style="width: 120px" placeholder="分类 ID" />
+              <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId as number" :options="categorySelectOptions" placeholder="选择分类" style="flex: 1" @update:value="v => (a.payload.categoryId = v)" />
               <NInput v-else-if="a.type === 'appendNote'" :value="a.payload.suffix as string" placeholder="追加文本" style="flex: 1" @update:value="v => (a.payload.suffix = v)" />
               <NInput v-else-if="a.type === 'addTag'" :value="a.payload.tag as string" placeholder="标签名" style="flex: 1" @update:value="v => (a.payload.tag = v)" />
               <NInput v-else :value="a.payload.message as string" placeholder="通知文案" style="flex: 1" @update:value="v => (a.payload.message = v)" />
