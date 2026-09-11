@@ -19,13 +19,13 @@ import { filterCommands } from '@/utils/commands'
  * 匹配与排序交给 utils/commands.ts 的纯函数，这里只管交互与渲染。
  */
 
-const { visible, close } = useCommandPalette()
+const { visible, close, toggle } = useCommandPalette()
 const router = useRouter()
 const quickEntry = useQuickEntryStore()
 const bookStore = useBookStore()
 
 // ⌘⇧P / Ctrl+Shift+P：架构 §3.6 里 z-index command 层就是给它留的
-useHotkey('Cmd+Shift+P', () => useCommandPalette().toggle())
+useHotkey('Cmd+Shift+P', toggle)
 
 const query = ref('')
 const activeIndex = ref(0)
@@ -119,12 +119,16 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 // 打开时重置状态并聚焦输入框（面板是"用完即走"的，不留上次搜索词）
-watch(visible, (open) => {
+watch(visible, async (open) => {
   if (!open)
     return
   query.value = ''
   activeIndex.value = 0
-  nextTick(() => inputRef.value?.focus())
+  // 聚焦要兜两次：nextTick 时弹层 DOM 已插入但淡入动画未开始，
+  // 此刻 focus() 会被随后的 transform/visibility 变化打断；动画下一帧再补一次。
+  await nextTick()
+  inputRef.value?.focus()
+  requestAnimationFrame(() => inputRef.value?.focus())
 })
 
 // 搜索词变了，选中项回到第一条
@@ -183,7 +187,7 @@ watch(activeIndex, async () => {
             role="option"
             :aria-selected="i === activeIndex"
             :class="{ active: i === activeIndex }"
-            @mousemove="activeIndex = i"
+            @mouseenter="activeIndex = i"
             @click="exec(row.cmd)"
           >
             <span class="palette-title">{{ row.cmd.title }}</span>
