@@ -19,6 +19,7 @@ import { NButton, NDataTable, NRadioButton, NRadioGroup, NSelect, NTag, useMessa
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { bucketRange } from '@/api/modules/report'
 import { listTransactions } from '@/api/modules/transaction'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
@@ -331,12 +332,13 @@ function exportCsv(): void {
       </div>
 
       <NSkeleton v-if="loading" class="chart-skeleton" height="340px" />
-      <div v-else-if="!result || result.count === 0" class="chart-empty">
-        <span class="empty-icon" aria-hidden="true">📉</span>
-        <p class="empty-text">
-          当前筛选条件下没有收支数据
-        </p>
-      </div>
+      <EmptyState
+        v-else-if="!result || result.count === 0"
+        variant="chart"
+        size="sm"
+        title="当前筛选条件下没有收支数据"
+        desc="换个时间范围或分类试试"
+      />
       <template v-else>
         <ReportBar v-if="chartKind === 'bar'" :buckets="result.buckets" @select="drillBucket" />
         <ReportLine v-else-if="chartKind === 'line'" :buckets="result.buckets" @select="drillBucket" />

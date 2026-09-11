@@ -24,6 +24,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { mockListAccounts } from '@/api/modules/account/mock'
 import { mockListCategories } from '@/api/modules/category/mock'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useRecurringStore } from '@/stores/modules/recurring'
 import { formatCents } from '@/utils/money'
@@ -300,7 +301,17 @@ onMounted(() => {
             </div>
           </NSpace>
         </template>
-        <NEmpty v-else description="还没有周期账单模板" />
+        <EmptyState
+          v-else
+          variant="recurring"
+          size="sm"
+          title="还没有周期账单模板"
+          desc="房租、订阅、工资这类每月固定的收支，建个模板自动生成"
+        >
+          <NButton size="small" type="primary" @click="openCreate">
+            新建模板
+          </NButton>
+        </EmptyState>
       </NCard>
     </NSpace>
 

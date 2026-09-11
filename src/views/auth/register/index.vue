@@ -151,13 +151,13 @@ function onSwitchToLogin() {
   place-items: center;
   padding: 32px 48px;
   background:
-    radial-gradient(circle at 50% 0%, rgba(82, 136, 255, 0.04), transparent 50%),
+    radial-gradient(circle at 50% 0%, rgb(var(--lz-primary-rgb) / 5%), transparent 50%),
     var(--lz-bg-card);
 
   :global(html.dark) & {
     background:
-      radial-gradient(circle at 50% 0%, rgba(82, 136, 255, 0.06), transparent 50%),
-      #0d1422;
+      radial-gradient(circle at 50% 0%, rgb(var(--lz-primary-rgb) / 7%), transparent 50%),
+      var(--lz-bg-page);
   }
 }
 

@@ -17,6 +17,7 @@
 import type { NetWorthTrend } from '@/types/stats'
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useSettingsStore } from '@/stores/modules/settings'
@@ -182,15 +183,17 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
           账户构成
         </h2>
         <NSkeleton v-if="loading" class="chart-skeleton" height="280px" />
-        <div v-else-if="isEmpty" class="card-empty">
-          <span class="empty-icon" aria-hidden="true">🏦</span>
-          <p class="empty-text">
-            还没有账户，先去建一个才能看到资产构成
-          </p>
+        <EmptyState
+          v-else-if="isEmpty"
+          variant="wallet"
+          size="sm"
+          title="还没有账户"
+          desc="建一个账户，才能看到资产构成"
+        >
           <NButton size="small" @click="goAccount">
             去账户管理
           </NButton>
-        </div>
+        </EmptyState>
         <AccountComposition v-else :accounts="account.accounts" />
       </div>
     </section>

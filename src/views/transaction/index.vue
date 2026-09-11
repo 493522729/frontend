@@ -17,6 +17,7 @@ import type { VxeGridProps } from 'vxe-table'
 import type { Transaction } from '@/types/transaction'
 import { useMessage, useNotification } from 'naive-ui'
 import { computed, getCurrentInstance, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useHotkey } from '@/composables/useHotkey'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
 import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transaction'
@@ -644,20 +645,16 @@ async function onConfirmBatch() {
               - 首次使用 → 「点右下角 + 记一笔」
               - 筛了没结果 → 「清空筛选看看」
             -->
-            <div v-if="!loading && list.length === 0" class="empty-state">
-              <div class="empty-emoji">
-                {{ filterApplied ? '🔍' : '📒' }}
-              </div>
-              <h2 class="empty-title">
-                {{ filterApplied ? '没有匹配的流水' : '还没有任何交易' }}
-              </h2>
-              <p class="empty-desc">
-                {{ filterApplied ? '试试调整或清空筛选条件' : '点击右下角快速记一笔，开始你的记账之旅' }}
-              </p>
+            <EmptyState
+              v-if="!loading && list.length === 0"
+              :variant="filterApplied ? 'search' : 'ledger'"
+              :title="filterApplied ? '没有匹配的流水' : '还没有任何交易'"
+              :desc="filterApplied ? '试试调整或清空筛选条件' : '点击右下角快速记一笔，开始你的记账之旅'"
+            >
               <NButton v-if="filterApplied" size="small" quaternary @click="resetFilter">
                 清空筛选
               </NButton>
-            </div>
+            </EmptyState>
 
             <vxe-grid
               v-else

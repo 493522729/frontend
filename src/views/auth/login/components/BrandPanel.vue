@@ -15,14 +15,16 @@
  *   └─────┘
  *
  * 视觉细节：
- *   - 整块用彩色径向渐变 + 装饰几何（左下/右上浮动 SVG）
- *   - 暗色模式自动加深
+ *   - **深色底**（primary-900 → 700 晨雾蓝深阶）+ 装饰几何（左下/右上浮动 SVG）
  *   - 装饰「光斑」用 float 动画（架构文档 4.2）
+ *
+ * 配色定案（2026-09-11 老赵拍板，方案 C）：
+ *   登录页左侧品牌区原来用 #5288ff→#7d5fff 蓝紫渐变，与全站晨雾蓝两套色并存。
+ *   现改为「同色系深底」—— 仍是晨雾蓝（primary-900/800/700），但深底一压，
+ *   登录页既有独立气质，又不引入第二个色系。
+ *   附带收益：**不再需要 is-dark 分支**，深浅模式共用一套深底（本来就该如此：
+ *   品牌区是"海报"，不是"内容区"，不该跟着主题明暗来回变）。
  */
-import { useAppStore } from '@/stores/modules/app'
-
-const app = useAppStore()
-
 interface Feature {
   icon: string // SVG innerHTML path
   title: string
@@ -54,7 +56,7 @@ const features: Feature[] = [
 </script>
 
 <template>
-  <aside class="brand-panel" :class="{ 'is-dark': app.isDark }">
+  <aside class="brand-panel">
     <!-- 装饰：径向光斑 + 流动 SVG -->
     <div class="bg-glow bg-glow--1" aria-hidden="true" />
     <div class="bg-glow bg-glow--2" aria-hidden="true" />
@@ -83,8 +85,8 @@ const features: Feature[] = [
         <svg viewBox="0 0 32 32">
           <defs>
             <linearGradient id="brand-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#5288ff" />
-              <stop offset="1" stop-color="#7d5fff" />
+              <stop offset="0" stop-color="var(--lz-primary-300)" />
+              <stop offset="1" stop-color="var(--lz-primary-500)" />
             </linearGradient>
           </defs>
           <!-- 圆角底板 -->
@@ -152,20 +154,12 @@ const features: Feature[] = [
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse at top left, rgba(168, 216, 255, 0.45), transparent 50%),
-    radial-gradient(ellipse at bottom right, rgba(197, 182, 255, 0.4), transparent 50%),
-    linear-gradient(135deg, #eef5ff 0%, #e8ecff 100%);
-  color: #34466b;
+    radial-gradient(ellipse at top left, rgb(var(--lz-primary-rgb) / 30%), transparent 55%),
+    radial-gradient(ellipse at bottom right, rgb(144 180 226 / 26%), transparent 55%),
+    linear-gradient(135deg, var(--lz-primary-900) 0%, var(--lz-primary-800) 55%, var(--lz-primary-700) 100%);
+  color: #e6eefb;
   overflow: hidden;
   isolation: isolate;
-
-  &.is-dark {
-    background:
-      radial-gradient(ellipse at top left, rgba(82, 136, 255, 0.35), transparent 50%),
-      radial-gradient(ellipse at bottom right, rgba(150, 110, 235, 0.3), transparent 50%),
-      linear-gradient(135deg, #0a1428 0%, #1a1633 100%);
-    color: #d9e2f3;
-  }
 }
 
 /* 光斑：float 制造缓慢漂浮 */
@@ -181,7 +175,7 @@ const features: Feature[] = [
     left: -100px;
     width: 360px;
     height: 360px;
-    background: radial-gradient(circle, rgba(82, 168, 255, 0.5), transparent 60%);
+    background: radial-gradient(circle, rgb(var(--lz-primary-rgb) / 45%), transparent 60%);
     animation: float 9s ease-in-out infinite;
   }
 
@@ -190,7 +184,7 @@ const features: Feature[] = [
     right: -80px;
     width: 420px;
     height: 420px;
-    background: radial-gradient(circle, rgba(197, 182, 255, 0.5), transparent 60%);
+    background: radial-gradient(circle, rgb(148 196 234 / 40%), transparent 60%);
     animation: float 11s ease-in-out infinite reverse;
   }
 }
@@ -206,9 +200,8 @@ const features: Feature[] = [
   inset: 0;
   width: 100%;
   height: 100%;
-  color: #5288ff;
+  color: var(--lz-primary-200);
   z-index: 0;
-  :global(.dark) & { color: #8e9fd9; }
 }
 
 /* 浮动几何 */
@@ -216,9 +209,7 @@ const features: Feature[] = [
   position: absolute;
   z-index: 1;
   pointer-events: none;
-  color: #82a4dd;
-
-  :global(.dark) & { color: #5e6a8c; }
+  color: var(--lz-primary-300);
 }
 
 .shape-circle {
@@ -284,17 +275,18 @@ const features: Feature[] = [
 
   .line {
     display: block;
-    background: linear-gradient(120deg, #205392 0%, #2a6bb4 40%, #5fa5de 100%);
+    background: linear-gradient(120deg, #f2f7fc 0%, #ffffff 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
-  /* 优先级必须高过 .line，才能覆盖透明填充 */
+  /* 优先级必须高过 .line，才能覆盖透明填充。
+     深底上用 primary-300（浅蓝）做强调，保证与白字有足够对比又不刺眼 */
   .line-2 em {
     font-style: normal;
-    color: var(--lz-primary-700);
-    -webkit-text-fill-color: var(--lz-primary-700);
+    color: var(--lz-primary-300);
+    -webkit-text-fill-color: var(--lz-primary-300);
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
@@ -338,16 +330,11 @@ const features: Feature[] = [
   border-radius: 9px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(82, 136, 255, 0.15);
-  color: #5288ff;
+  background: rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  color: var(--lz-primary-200);
   flex-shrink: 0;
   @include transition-paint(var(--lz-duration-slow));
-
-  :global(.dark) & {
-    background: rgba(255, 255, 255, 0.04);
-    color: #8caaff;
-  }
 
   svg {
     width: 18px;
@@ -356,7 +343,7 @@ const features: Feature[] = [
 }
 
 .feat:hover .feat-icon {
-  background: linear-gradient(135deg, #5288ff, #7d5fff);
+  background: linear-gradient(135deg, var(--lz-primary-400), var(--lz-primary-600));
   color: #fff;
   transform: scale(1.06);
   border-color: transparent;

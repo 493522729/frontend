@@ -9,6 +9,7 @@
  * 所以 0 笔时直接换成「记第一笔」引导，把用户导向 Cmd+K 那条主路径。
  */
 import { computed, onMounted } from 'vue'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { formatCents } from '@/utils/money'
@@ -128,15 +129,17 @@ function openQuickEntry(): void {
         <NSkeleton v-if="loading" class="chart-skeleton" height="300px" />
 
         <!-- 空状态：本月还没记账，引导走 Cmd+K 主路径 -->
-        <div v-else-if="isEmpty" class="chart-empty">
-          <span class="empty-icon" aria-hidden="true">📊</span>
-          <p class="empty-text">
-            本月还没有交易
-          </p>
+        <EmptyState
+          v-else-if="isEmpty"
+          variant="chart"
+          size="sm"
+          title="本月还没有交易"
+          desc="记下第一笔，这里就会长出你的收支结构"
+        >
           <NButton type="primary" size="small" @click="openQuickEntry">
             记第一笔
           </NButton>
-        </div>
+        </EmptyState>
 
         <CategoryPie v-else :slices="overview?.categories ?? []" />
       </div>

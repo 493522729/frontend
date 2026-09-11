@@ -12,6 +12,7 @@ import type { Transaction } from '@/types/transaction'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { runRule } from '@/api/modules/rule'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useRuleStore } from '@/stores/modules/rule'
 import {
@@ -251,13 +252,16 @@ const hasResult = computed(() => ruleStore.list.length > 0)
       </NSpace>
     </header>
 
-    <NEmpty v-if="!hasResult && !ruleStore.loading" description="还没有规则，点「新建规则」起步">
-      <template #extra>
-        <NButton type="primary" @click="openCreate">
-          新建规则
-        </NButton>
-      </template>
-    </NEmpty>
+    <EmptyState
+      v-if="!hasResult && !ruleStore.loading"
+      variant="rule"
+      title="还没有规则"
+      desc="建一条「包含星巴克 → 归到咖啡」，以后就不用手动分类了"
+    >
+      <NButton type="primary" @click="openCreate">
+        新建规则
+      </NButton>
+    </EmptyState>
 
     <div v-else class="rule-list">
       <NCard v-for="rule in ruleStore.list" :key="rule.id" hoverable class="rule-card">

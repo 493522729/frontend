@@ -76,6 +76,35 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+
+  // 可视化大屏（US-014）：走 BlankLayout 全屏沉浸。
+  // 注意它**不能**写成 modules/ 下的文件 —— 那里 layout:'blank' 的模块会被
+  // defaultRoutes 的 filter 排除掉（只有 login/register 是手写进 routes 的）。
+  {
+    path: '/screen',
+    component: () => import('@/layouts/blank/index.vue'),
+    meta: {
+      title: '可视化大屏',
+      icon: 'screen',
+      order: 20,
+      requiresAuth: true,
+      layout: 'blank',
+    },
+    children: [
+      {
+        path: '',
+        name: 'Screen',
+        component: () => import('@/views/screen/index.vue'),
+        meta: {
+          title: '可视化大屏',
+          icon: 'screen',
+          order: 20,
+          requiresAuth: true,
+          layout: 'blank',
+        },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({

@@ -5,6 +5,7 @@ import { NButton, NInput, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { findFallbackAccount } from '@/api/modules/account'
 import { countAccountUsage } from '@/api/modules/transaction'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { ACCOUNT_TYPE_META, ACCOUNT_TYPES } from '@/enums/account'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
@@ -228,12 +229,16 @@ watch(() => book.currentBookId, () => accountStore.refresh())
     <div v-if="loading && accounts.length === 0" class="empty-state">
       加载中…
     </div>
-    <div v-else-if="accounts.length === 0" class="empty-state">
-      <p>当前账本还没有账户，先建一个才能记账。</p>
+    <EmptyState
+      v-else-if="accounts.length === 0"
+      variant="wallet"
+      title="还没有账户"
+      desc="当前账本还没有账户，先建一个才能记账"
+    >
       <NButton size="small" type="primary" @click="openCreate">
         + 新建账户
       </NButton>
-    </div>
+    </EmptyState>
 
     <div v-else class="account-grid">
       <article
