@@ -447,6 +447,8 @@ function amountColor(t: Transaction) {
   font-size: 38px;
   font-weight: 700;
   letter-spacing: 0.12em;
+  line-height: 1.5;
+  padding: 0.15em 0.2em;
   background: linear-gradient(180deg, #ffffff 0%, #94c4ea 100%);
   -webkit-background-clip: text;
   background-clip: text;
