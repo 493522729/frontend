@@ -6,9 +6,11 @@ import {
   createCategory,
   deleteCategory,
   findFallbackCategory,
+  reorderCategories,
   updateCategory,
 } from '@/api/modules/category'
 import { countCategoryUsage, reassignCategory } from '@/api/modules/transaction'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useDictStore } from '@/stores/modules/dict'
 
 /**
@@ -77,6 +79,9 @@ function isDescendant(nodeId: number, ancestorId: number): boolean {
 }
 
 const parentOptions = computed(() => parentCandidates().map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })))
+
+/** 当前编辑项是否已有子分类：有子项时不能把它改成二级，否则子项会变为三级，UI 目前只支持两级 */
+const editingHasChildren = computed(() => editingId.value != null && childrenOf(editingId.value).length > 0)
 
 function openCreate(type: Category['type']) {
   editingId.value = null
@@ -171,6 +176,75 @@ async function confirmDelete() {
 
 onMounted(() => dict.ensureCategories())
 
+// ── 拖拽排序（HTML5 原生 DnD，零依赖） ───────────────
+// 只在同一分组（type + parentId 相同）内排序，跨分组不允许。
+const dragItem = ref<{ id: number, type: Category['type'], parentId: number | null } | null>(null)
+const dragOverId = ref<number | null>(null)
+
+function onDragStart(e: DragEvent, cat: Category) {
+  dragItem.value = { id: cat.id, type: cat.type, parentId: cat.parentId }
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(cat.id))
+  }
+}
+
+function onDragOver(e: DragEvent, cat: Category) {
+  const src = dragItem.value
+  if (!src)
+    return
+  if (src.type !== cat.type || src.parentId !== cat.parentId || src.id === cat.id)
+    return
+  e.preventDefault() // 允许放
+  dragOverId.value = cat.id
+}
+
+function onDrop(e: DragEvent, cat: Category) {
+  e.preventDefault()
+  const src = dragItem.value
+  dragItem.value = null
+  dragOverId.value = null
+  if (!src)
+    return
+  // 仅同分组内可排序
+  if (src.type !== cat.type || src.parentId !== cat.parentId || src.id === cat.id)
+    return
+  const ids = dict.categories
+    .filter(c => c.type === src.type && c.parentId === src.parentId)
+    .map(c => c.id)
+  const from = ids.indexOf(src.id)
+  const to = ids.indexOf(cat.id)
+  if (from < 0 || to < 0)
+    return
+  ids.splice(from, 1)
+  ids.splice(to, 0, src.id)
+  applyReorder(src.type, src.parentId, ids)
+}
+
+function onDragEnd() {
+  dragItem.value = null
+  dragOverId.value = null
+}
+
+/** 乐观更新：先本地重排避免闪烁，再调用后端持久化；失败则回滚刷新 */
+async function applyReorder(type: Category['type'], parentId: number | null, ids: number[]) {
+  const group = ids
+    .map(id => dict.categories.find(c => c.id === id))
+    .filter((c): c is Category => Boolean(c))
+  group.forEach((c, i) => {
+    c.sortOrder = i
+  })
+  const others = dict.categories.filter(c => !(c.type === type && c.parentId === parentId))
+  dict.categories = [...others, ...group]
+  try {
+    await reorderCategories(type, parentId, ids)
+  }
+  catch {
+    message.error('排序保存失败，已恢复')
+    await dict.refresh()
+  }
+}
+
 // 类型切换时，若当前父级与类型不匹配则清空（父级必须同类型）
 watch(() => form.type, () => {
   if (form.parentId != null) {
@@ -196,7 +270,7 @@ watch(() => form.type, () => {
 
     <div class="cat-groups">
       <!-- 支出 -->
-      <section class="cat-group">
+      <section class="cat-group" title="拖动分类行可调整顺序，排序会自动保存">
         <div class="group-head">
           <span class="group-title"><span class="dot dot-expense" /> 支出分类</span>
           <NButton size="small" tertiary type="primary" @click="openCreate('expense')">
@@ -205,7 +279,15 @@ watch(() => form.type, () => {
         </div>
         <ul class="cat-list">
           <template v-for="root in expenseRoots" :key="root.id">
-            <li class="cat-row">
+            <li
+              class="cat-row"
+              :class="{ 'dragging': dragItem?.id === root.id, 'drop-target': dragOverId === root.id }"
+              draggable="true"
+              @dragstart="onDragStart($event, root)"
+              @dragover="onDragOver($event, root)"
+              @drop="onDrop($event, root)"
+              @dragend="onDragEnd"
+            >
               <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
               <span class="cat-name">{{ root.name }}</span>
               <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
@@ -218,6 +300,12 @@ watch(() => form.type, () => {
               v-for="child in childrenOf(root.id)"
               :key="child.id"
               class="cat-row cat-row--child"
+              :class="{ 'dragging': dragItem?.id === child.id, 'drop-target': dragOverId === child.id }"
+              draggable="true"
+              @dragstart="onDragStart($event, child)"
+              @dragover="onDragOver($event, child)"
+              @drop="onDrop($event, child)"
+              @dragend="onDragEnd"
             >
               <span class="child-connector" />
               <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22`, color: child.color }">{{ child.icon }}</span>
@@ -228,11 +316,23 @@ watch(() => form.type, () => {
               </span>
             </li>
           </template>
+          <li v-if="expenseRoots.length === 0" class="cat-empty">
+            <EmptyState
+              variant="ledger"
+              size="sm"
+              title="暂无支出分类"
+              desc="点击右上角「+ 新增」创建你的第一个分类"
+            >
+              <NButton size="small" tertiary type="primary" @click="openCreate('expense')">
+                + 新增
+              </NButton>
+            </EmptyState>
+          </li>
         </ul>
       </section>
 
       <!-- 收入 -->
-      <section class="cat-group">
+      <section class="cat-group" title="拖动分类行可调整顺序，排序会自动保存">
         <div class="group-head">
           <span class="group-title"><span class="dot dot-income" /> 收入分类</span>
           <NButton size="small" tertiary type="primary" @click="openCreate('income')">
@@ -241,7 +341,15 @@ watch(() => form.type, () => {
         </div>
         <ul class="cat-list">
           <template v-for="root in incomeRoots" :key="root.id">
-            <li class="cat-row">
+            <li
+              class="cat-row"
+              :class="{ 'dragging': dragItem?.id === root.id, 'drop-target': dragOverId === root.id }"
+              draggable="true"
+              @dragstart="onDragStart($event, root)"
+              @dragover="onDragOver($event, root)"
+              @drop="onDrop($event, root)"
+              @dragend="onDragEnd"
+            >
               <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
               <span class="cat-name">{{ root.name }}</span>
               <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
@@ -254,6 +362,12 @@ watch(() => form.type, () => {
               v-for="child in childrenOf(root.id)"
               :key="child.id"
               class="cat-row cat-row--child"
+              :class="{ 'dragging': dragItem?.id === child.id, 'drop-target': dragOverId === child.id }"
+              draggable="true"
+              @dragstart="onDragStart($event, child)"
+              @dragover="onDragOver($event, child)"
+              @drop="onDrop($event, child)"
+              @dragend="onDragEnd"
             >
               <span class="child-connector" />
               <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22`, color: child.color }">{{ child.icon }}</span>
@@ -264,6 +378,18 @@ watch(() => form.type, () => {
               </span>
             </li>
           </template>
+          <li v-if="incomeRoots.length === 0" class="cat-empty">
+            <EmptyState
+              variant="ledger"
+              size="sm"
+              title="暂无收入分类"
+              desc="点击右上角「+ 新增」创建你的第一个分类"
+            >
+              <NButton size="small" tertiary type="primary" @click="openCreate('income')">
+                + 新增
+              </NButton>
+            </EmptyState>
+          </li>
         </ul>
       </section>
     </div>
@@ -288,11 +414,15 @@ watch(() => form.type, () => {
         <label class="form-label">名称</label>
         <NInput v-model:value="form.name" placeholder="如：餐饮、工资" maxlength="20" />
 
-        <label class="form-label">上级分类（可选）</label>
+        <label class="form-label">
+          上级分类（可选）
+          <span v-if="editingHasChildren" class="form-hint">· 该分类已有子项，需先处理子项才能修改上级</span>
+        </label>
         <NSelect
           v-model:value="form.parentId"
           :options="parentOptions"
           placeholder="不选择则为一级分类"
+          :disabled="editingHasChildren"
           clearable
         />
 
@@ -381,6 +511,7 @@ watch(() => form.type, () => {
   padding: var(--lz-content-padding);
   max-width: 960px;
   margin: 0 auto;
+  height: 100%; // 填满内容区，让分类盒子内部滚动而非整页滚动
 }
 
 .page-head {
@@ -406,6 +537,9 @@ watch(() => form.type, () => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: var(--lz-space-5);
+  align-items: start; // 高度按内容，不强行撑满一行
+  flex: 1; // 占满剩余高度
+  min-height: 0; // 允许在 flex 容器内收缩，否则内部滚动失效
 }
 
 .cat-group {
@@ -413,6 +547,10 @@ watch(() => form.type, () => {
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
   padding: var(--lz-space-4);
+  display: flex; // 让内部 cat-list 能独立滚动
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .group-head {
@@ -452,6 +590,9 @@ watch(() => form.type, () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-height: 0;
+  max-height: min(45vh, 360px); // 限制最大高度，避免分类面板过高导致页面滚动
+  overflow-y: auto; // 分类多时盒子内部滚动，不撑高页面
 }
 
 .cat-row {
@@ -460,10 +601,26 @@ watch(() => form.type, () => {
   gap: 10px;
   padding: 8px 10px;
   border-radius: var(--lz-radius-lg);
-  transition: background-color var(--lz-duration-base) var(--lz-ease-standard);
+  cursor: grab;
+  transition: background-color var(--lz-duration-base) var(--lz-ease-standard), box-shadow var(--lz-duration-base) var(--lz-ease-standard);
 
   &:hover {
     background: var(--lz-bg-hover);
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  // 拖拽中：半透明，提示正在移动
+  &.dragging {
+    opacity: .4;
+  }
+
+  // 可放置目标：顶部高亮条
+  &.drop-target {
+    background: var(--lz-primary-50);
+    box-shadow: inset 0 3px 0 0 var(--lz-primary-500);
   }
 }
 
@@ -535,6 +692,12 @@ watch(() => form.type, () => {
   font-weight: 500;
   color: var(--lz-text-regular);
   margin-top: 4px;
+}
+
+.form-hint {
+  font-weight: 400;
+  color: var(--lz-text-secondary);
+  margin-left: 6px;
 }
 
 .icon-grid {
