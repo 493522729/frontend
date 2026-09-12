@@ -104,7 +104,10 @@ async function onUserMenuSelect(key: string | number) {
         @select="onUserMenuSelect"
       >
         <button class="user-chip" :title="displayName">
-          <span class="user-avatar">{{ avatarText }}</span>
+          <span class="user-avatar">
+            <img v-if="auth.userInfo?.avatar" :src="auth.userInfo.avatar" class="user-avatar-img" alt="头像">
+            <template v-else>{{ avatarText }}</template>
+          </span>
           <span class="user-name">{{ displayName }}</span>
           <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
@@ -212,6 +215,15 @@ async function onUserMenuSelect(key: string | number) {
   color: #fff;
   font-size: 13px;
   font-weight: 600;
+  overflow: hidden;
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
 }
 
 .user-name {
