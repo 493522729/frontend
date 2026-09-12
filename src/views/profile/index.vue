@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { UserInfo } from '@/api/modules/user'
-import { NAvatar, NButton, NInput, NModal, useMessage } from 'naive-ui'
+import { NButton, NInput, NModal, useMessage } from 'naive-ui'
 import { computed, ref } from 'vue'
 import { userApi } from '@/api/modules/user'
 import { useAuthStore } from '@/stores/modules/auth'
@@ -186,15 +186,12 @@ async function handleLogout() {
             <span class="row-desc">JPG、PNG 或 GIF（最大 2 MB）</span>
           </div>
           <div class="row-action">
-            <NAvatar
-              round
-              :size="48"
-              :src="user?.avatar"
-              :fallback-src="undefined"
-              class="row-avatar"
-            >
-              {{ user?.nickname?.slice(0, 1) ?? user?.username?.slice(0, 1) ?? '?' }}
-            </NAvatar>
+            <span class="row-avatar-preview">
+              <img v-if="user?.avatar" :src="user.avatar" class="row-avatar-img" alt="头像">
+              <span v-else class="row-avatar-text">
+                {{ user?.nickname?.slice(0, 1) ?? user?.username?.slice(0, 1) ?? '?' }}
+              </span>
+            </span>
             <input
               ref="fileInputRef"
               type="file"
@@ -387,10 +384,28 @@ async function handleLogout() {
   color: var(--lz-text-regular);
 }
 
-.row-avatar {
-  font-size: 18px;
+.row-avatar-preview {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
   background: var(--lz-primary-100);
   color: var(--lz-primary-600);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.row-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.row-avatar-text {
+  line-height: 1;
 }
 
 .edit-icon {
