@@ -88,11 +88,38 @@ async function submitPhone() {
   }
 }
 
-// ── 头像上传（本地 base64，限制 2MB）───────────────────────
+// ── 头像上传（压缩为 128×128 JPEG 后转 base64）────────────────
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const AVATAR_CANVAS_SIZE = 128
 
 function triggerAvatarUpload() {
   fileInputRef.value?.click()
+}
+
+function compressImage(file: File, maxSize: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('浏览器不支持 Canvas'))
+        return
+      }
+      const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1)
+      canvas.width = Math.round(img.width * ratio)
+      canvas.height = Math.round(img.height * ratio)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('图片加载失败'))
+    }
+    img.src = url
+  })
 }
 
 async function onAvatarChange(e: Event) {
@@ -110,20 +137,18 @@ async function onAvatarChange(e: Event) {
     target.value = ''
     return
   }
-  const reader = new FileReader()
-  reader.onload = async () => {
-    const base64 = reader.result as string
-    try {
-      await userApi.updateProfile({ avatar: base64 })
-      await auth.refreshProfile()
-      message.success('头像已更新')
-    }
-    catch {
-      message.error('头像更新失败')
-    }
+  try {
+    const base64 = await compressImage(file, AVATAR_CANVAS_SIZE, 0.8)
+    await userApi.updateProfile({ avatar: base64 })
+    await auth.refreshProfile()
+    message.success('头像已更新')
+  }
+  catch {
+    message.error('头像处理失败，请换一张图片')
+  }
+  finally {
     target.value = ''
   }
-  reader.readAsDataURL(file)
 }
 
 // ── 微信账号（P5 微信扫码登录对接后启用）────────────────────
