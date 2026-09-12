@@ -35,3 +35,11 @@ stats.html
 # 临时文件
 _tmp_*
 *.tmp
+
+# 截图等图片文件（不纳入版本控制，避免误提交）
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
