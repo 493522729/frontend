@@ -1,8 +1,15 @@
 /**
- * 周期账单 API（mock-first）
- * ====================================================================
- * 业务层只调用这里，不碰 mock 细节；真接口联调时整体替换本文件实现即可。
- * 延迟用 simulateLatency 包裹，让列表 / 确认 / 驳回的 loading 状态在开发期可见。
+ * 周期账单 API —— 已切换到真实后端。
+ * 调用方（store / 页面 / 配置弹层）一行不用动。
+ * 与后端 RecurringController 对齐：
+ *   GET  /api/recurring/templates        模板列表（含停用项）
+ *   POST /api/recurring/templates        新建
+ *   PUT  /api/recurring/templates/{id}   更新（部分字段）
+ *   DEL  /api/recurring/templates/{id}   删除
+ *   POST /api/recurring/templates/{id}/toggle-auto-confirm  切自动确认
+ *   GET  /api/recurring/pending?bookId=  本月待确认项（派生）
+ *   POST /api/recurring/{id}/confirm     确认（写交易）
+ *   POST /api/recurring/{id}/dismiss     驳回（不写交易）
  */
 
 import type {
@@ -11,54 +18,45 @@ import type {
   RecurringTemplate,
 } from '@/types/recurring'
 import type { Transaction } from '@/types/transaction'
-import { MOCK_LATENCY, simulateLatency } from '@/api/mock-latency'
-import {
-  mockConfirmRecurring,
-  mockCreateTemplate,
-  mockDeleteTemplate,
-  mockDismissRecurring,
-  mockGetPendingRecurring,
-  mockListTemplates,
-  mockToggleAutoConfirm,
-  mockUpdateTemplate,
-} from './mock'
+import { http } from '@/api/request'
 
-/** 模板列表（配置页用） */
+/** 模板列表（配置页用，含停用项） */
 export function listTemplates(bookId?: number): Promise<RecurringTemplate[]> {
-  return simulateLatency(mockListTemplates(bookId))
+  return http.get<RecurringTemplate[]>('/recurring/templates', bookId == null ? {} : { bookId })
 }
 
 /** 新建模板 */
 export function createTemplate(input: Omit<RecurringTemplate, 'id'>): Promise<RecurringTemplate> {
-  return simulateLatency(mockCreateTemplate(input), MOCK_LATENCY.write)
+  return http.post<RecurringTemplate>('/recurring/templates', input)
 }
 
-/** 更新模板 */
+/** 更新模板（部分字段） */
 export function updateTemplate(id: number, patch: Partial<Omit<RecurringTemplate, 'id'>>): Promise<RecurringTemplate> {
-  return simulateLatency(mockUpdateTemplate(id, patch), MOCK_LATENCY.write)
+  return http.put<RecurringTemplate>(`/recurring/templates/${id}`, patch)
 }
 
 /** 删除模板 */
 export function deleteTemplate(id: number): Promise<void> {
-  return simulateLatency(mockDeleteTemplate(id), MOCK_LATENCY.write)
+  return http.delete<void>(`/recurring/templates/${id}`)
 }
 
 /** 切换自动确认开关 */
 export function toggleAutoConfirm(id: number): Promise<RecurringTemplate> {
-  return simulateLatency(mockToggleAutoConfirm(id), MOCK_LATENCY.write)
+  return http.post<RecurringTemplate>(`/recurring/templates/${id}/toggle-auto-confirm`)
 }
 
-/** 本月待确认项（派生） */
+/** 本月待确认项（派生，不落库） */
 export function getPendingRecurring(bookId: number): Promise<PendingRecurring[]> {
-  return simulateLatency(mockGetPendingRecurring(bookId), MOCK_LATENCY.list)
+  return http.get<PendingRecurring[]>('/recurring/pending', { bookId })
 }
 
-/** 确认一笔（写入交易） */
+/** 确认一笔（写入 source='recurring' 交易）。templateId 走 path，其余字段走 body（可覆盖） */
 export function confirmRecurring(options: ConfirmRecurringOptions): Promise<Transaction> {
-  return simulateLatency(mockConfirmRecurring(options), MOCK_LATENCY.write)
+  const { templateId, ...body } = options
+  return http.post<Transaction>(`/recurring/${templateId}/confirm`, body)
 }
 
-/** 驳回一笔（不写交易） */
+/** 驳回一笔（不写交易，仅标记本月已处理） */
 export function dismissRecurring(templateId: number, bookId: number): Promise<void> {
-  return simulateLatency(mockDismissRecurring(templateId, bookId), MOCK_LATENCY.write)
+  return http.post<void>(`/recurring/${templateId}/dismiss`, { bookId })
 }

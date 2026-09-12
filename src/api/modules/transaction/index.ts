@@ -1,9 +1,6 @@
 /**
- * 交易模块 API
- * ====================================================================
- * 当前走本地 mock（src/api/modules/transaction/mock.ts）。
- * 后端 Spring Boot 就绪后，把每个 export 函数体里的 mockXxx 换成 http.post/get 即可，
- * 业务代码（views/transaction/*）一行不用动。
+ * 交易模块 API —— 已切换到真实后端（Spring Boot）。
+ * 业务代码（views/transaction/*）一行不用动：所有函数签名与原 mock 版完全一致。
  */
 import type {
   Transaction,
@@ -11,98 +8,101 @@ import type {
   TransactionListResult,
   TransactionStatus,
 } from '@/types/transaction'
-import {
-  MOCK_LATENCY,
-  simulateLatency,
-} from '@/api/mock-latency'
-import {
-  mockBatchDeleteTransactions,
-  mockBatchUpdateCategory,
-  mockBatchUpdateStatus,
-  mockCountAccountUsage,
-  mockCountCategoryUsage,
-  mockCreateTransaction,
-  mockDeleteTransaction,
-  mockListTransactions,
-  mockReassignAccount,
-  mockReassignCategory,
-  mockRestoreTransactions,
-  mockUpdateTransaction,
-} from './mock'
+import { http } from '@/api/request'
 
-export { listAccounts } from '@/api/modules/account'
 // 分类 / 账户字典归属各自模块，这里透传，保持旧的调用方（dict store）零改动
+export { listAccounts } from '@/api/modules/account'
 export { listCategories } from '@/api/modules/category'
 
-/** 分页查交易 */
+/** 分页查交易（数组参数转逗号串，对齐后端 @RequestParam 解析） */
 export function listTransactions(params: TransactionListParams): Promise<TransactionListResult> {
-  // ── 开发期故障注入（仅浏览器 + URL 带 ?chaos=1 时生效）──
-  // 用于演示「网络异常自动重试 3 次 + 失败统一 toast + 手动重试按钮」整条链路，
-  // 不依赖真实后端也能看到重试行为。Node / 测试环境（无 window）永远走正常分支，
-  // 因此不影响单测。删 mock 时连同本段一起删即可。
-  if (typeof window !== 'undefined' && window.location.search.includes('chaos')) {
-    return Promise.reject(new Error('网络连接失败，请检查网络后重试'))
+  const q: Record<string, unknown> = {
+    page: params.page,
+    pageSize: params.pageSize,
   }
-  return simulateLatency(mockListTransactions(params), MOCK_LATENCY.list)
+  if (params.bookId != null)
+    q.bookId = params.bookId
+  if (params.startDate)
+    q.startDate = params.startDate
+  if (params.endDate)
+    q.endDate = params.endDate
+  if (params.keyword)
+    q.keyword = params.keyword
+  if (params.status)
+    q.status = params.status
+  if (params.categoryIds?.length)
+    q.categoryIds = params.categoryIds.join(',')
+  if (params.accountIds?.length)
+    q.accountIds = params.accountIds.join(',')
+  if (params.types?.length)
+    q.types = params.types.join(',')
+  return http.get<TransactionListResult>('/transactions', q)
 }
 
 /** 单笔更新（行内编辑 / 行编辑） */
 export function updateTransaction(id: number, patch: Partial<Transaction>): Promise<Transaction> {
-  return simulateLatency(mockUpdateTransaction(id, patch))
+  return http.put<Transaction>(`/transactions/${id}`, patch)
 }
 
 /** 单笔删除 */
 export function deleteTransaction(id: number): Promise<void> {
-  return simulateLatency(mockDeleteTransaction(id))
+  return http.delete<void>(`/transactions/${id}`)
 }
 
 /** 批量删除 */
 export function batchDeleteTransactions(ids: number[]): Promise<number> {
-  return simulateLatency(mockBatchDeleteTransactions(ids))
+  return http.post<number>('/transactions/batch-delete', { ids })
 }
 
 /** 撤销删除：把交易原样放回（配合批量删除的 5s 撤销 toast） */
 export function restoreTransactions(rows: Transaction[]): Promise<void> {
-  return simulateLatency(mockRestoreTransactions(rows))
+  const payload = rows.map(r => ({
+    bookId: r.bookId,
+    type: r.type,
+    amount: r.amount,
+    currency: r.currency,
+    accountId: r.accountId,
+    toAccountId: r.toAccountId,
+    categoryId: r.categoryId,
+    transDate: r.transDate,
+    note: r.note,
+    source: r.source,
+    status: r.status,
+  }))
+  return http.post<void>('/transactions/restore', { rows: payload })
 }
 
 /** 批量改分类 */
 export function batchUpdateCategory(ids: number[], categoryId: number): Promise<number> {
-  return simulateLatency(mockBatchUpdateCategory(ids, categoryId))
+  return http.post<number>('/transactions/batch-category', { ids, categoryId })
 }
 
-/** 批量改状态（待确认 / 已记）—— US-002 体验补强 */
+/** 批量改状态（待确认 / 已记） */
 export function batchUpdateStatus(ids: number[], status: TransactionStatus): Promise<number> {
-  return simulateLatency(mockBatchUpdateStatus(ids, status))
+  return http.post<number>('/transactions/batch-status', { ids, status })
 }
 
 /** 分类迁移：把某分类下的交易改挂目标分类（删除分类时调用） */
 export function reassignCategory(fromId: number, toId: number): Promise<number> {
-  return simulateLatency(mockReassignCategory(fromId, toId))
+  return http.post<number>('/transactions/reassign-category', { fromId, toId })
 }
 
 /** 统计某分类被多少笔交易引用（删除前提示用） */
 export function countCategoryUsage(id: number): Promise<number> {
-  return simulateLatency(mockCountCategoryUsage(id))
+  return http.get<number>(`/transactions/count-category?categoryId=${id}`)
 }
 
-/**
- * 统计某账户被多少笔交易引用（删除账户前提示用）
- * @returns total 总笔数 / transfer 其中转账笔数（转账会被一并清掉，必须提前告知）
- */
+/** 统计某账户被多少笔交易引用（删除账户前提示用） */
 export function countAccountUsage(id: number): Promise<{ total: number, transfer: number }> {
-  return simulateLatency(mockCountAccountUsage(id))
+  return http.get<{ total: number, transfer: number }>(`/transactions/count-account?accountId=${id}`)
 }
 
-/**
- * 账户迁移：把某账户下的收支改挂目标账户，转账笔直接删除
- * （转账两端都是账户，缺一端就成了「自己转给自己」的脏数据）
- */
+/** 账户迁移：把某账户下的收支改挂目标账户，转账笔直接删除 */
 export function reassignAccount(fromId: number, toId: number): Promise<{ migrated: number, removed: number }> {
-  return simulateLatency(mockReassignAccount(fromId, toId), MOCK_LATENCY.write)
+  return http.post<{ migrated: number, removed: number }>('/transactions/reassign-account', { fromId, toId })
 }
 
 /** 新增一笔（快速记账弹层会调） */
 export function createTransaction(input: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> {
-  return simulateLatency(mockCreateTransaction(input))
+  return http.post<Transaction>('/transactions', input)
 }
