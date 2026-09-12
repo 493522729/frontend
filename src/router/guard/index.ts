@@ -25,7 +25,7 @@ export function setupRouterGuards(router: Router) {
   router.beforeEach((to: RouteLocationNormalized, _from) => {
     NProgress.start()
 
-    // document.title：「仪表盘 · 老赵财务中台」
+    // document.title：「仪表盘 · 简账」
     document.title = to.meta.title ? `${to.meta.title} · ${APP_TITLE}` : APP_TITLE
 
     // ─── 鉴权拦截 ─────────────────────────────────────────────────────

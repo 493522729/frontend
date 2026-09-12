@@ -68,15 +68,20 @@ const menus = computed(() => {
     <!-- Logo 区 -->
     <div class="sidebar-logo" :title="$route.meta.title">
       <span class="logo-icon">
-        <svg class="logo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 20h18" />
-          <path d="M5 20V9l4-2 3 2 3-2 4 2v11" />
-          <path d="M9 20v-6h2v6" />
-          <path d="M15 20v-9h2v9" />
+        <svg class="logo-svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="side-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#94c4ea" />
+              <stop offset="1" stop-color="#3b87ce" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#side-grad)" />
+          <path d="M8 22 L13 15 L18 18.5 L24 10" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="24" cy="10" r="2.4" fill="#fff" />
         </svg>
       </span>
       <Transition name="fade">
-        <span v-if="!collapsed" class="logo-text">老赵财务中台</span>
+        <span v-if="!collapsed" class="logo-text">简账</span>
       </Transition>
     </div>
 

@@ -202,7 +202,7 @@ async function onChangePwdSubmit() {
         </h2>
       </div>
       <ul class="about-list">
-        <li><span>产品</span><b>老赵财务中台</b></li>
+        <li><span>产品</span><b>简账</b></li>
         <li><span>定位</span><b>个人 / 家庭财务中台（记账 + 多账本 + 报表）</b></li>
         <li><span>技术栈</span><b>Vue 3 · TypeScript · Naive UI · ECharts 6 · Vite</b></li>
         <li><span>数据状态</span><b>已对接真实后端，数据落库持久化</b></li>

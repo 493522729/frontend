@@ -319,7 +319,7 @@ function amountColor(t: Transaction) {
       <header class="screen-head">
         <div class="head-side">
           <span class="dot" />
-          <span class="brand">老赵财务中台</span>
+          <span class="brand">简账</span>
         </div>
 
         <h1 class="head-title">

@@ -4,7 +4,7 @@
  */
 
 /** 应用标题（构建期由 .env 注入的 __APP_TITLE__ 兜底） */
-export const APP_TITLE: string = typeof __APP_TITLE__ === 'string' ? __APP_TITLE__ : '老赵财务中台'
+export const APP_TITLE: string = typeof __APP_TITLE__ === 'string' ? __APP_TITLE__ : '简账'
 
 /** 侧边栏展开宽度（px） */
 export const SIDEBAR_WIDTH = 240

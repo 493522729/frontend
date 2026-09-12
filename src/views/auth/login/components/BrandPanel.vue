@@ -91,14 +91,12 @@ const features: Feature[] = [
           </defs>
           <!-- 圆角底板 -->
           <rect x="3" y="3" width="26" height="26" rx="8" fill="url(#brand-grad)" />
-          <!-- 抽象账簿/折线：财务管理意象 -->
-          <path d="M9 21h14" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" />
-          <path d="M9 16h10" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round" />
-          <path d="M9 11h6" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" />
-          <circle cx="22" cy="12" r="2.5" fill="#fff" />
+          <!-- 上升折线 + 端点：增长 / 财务意象 -->
+          <path d="M9 22 L14 15 L19 18.5 L23 11" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="23" cy="11" r="2.4" fill="#fff" />
         </svg>
       </div>
-      <span class="brand-name">老赵财务中台</span>
+      <span class="brand-name">简账</span>
     </header>
 
     <section class="brand-hero">
@@ -138,7 +136,7 @@ const features: Feature[] = [
         v0.1.0 · 练手项目
       </p>
       <p class="copyright">
-        © 2026 LaoZhao · Built with WorkBuddy
+        © 2026 简账 · Built with WorkBuddy
       </p>
     </footer>
   </aside>
