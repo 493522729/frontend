@@ -237,4 +237,16 @@ function onKeydown(e: KeyboardEvent) {
   font-size: 12px;
   color: var(--lz-text-regular);
 }
+
+/* 降低输入框背景透明度，同时保证输入文字/placeholder 颜色不被影响。
+   Naive UI 通过 --n-color 控制 input 背景，--n-text-color / --n-placeholder-color 独立控制文字。 */
+.account-panel :deep(.n-input) {
+  --n-color: rgba(255, 255, 255, 0.95) !important;
+  --n-color-focus: rgba(255, 255, 255, 1) !important;
+}
+
+html.dark .account-panel :deep(.n-input) {
+  --n-color: rgba(22, 28, 40, 0.95) !important;
+  --n-color-focus: rgba(22, 28, 40, 1) !important;
+}
 </style>
