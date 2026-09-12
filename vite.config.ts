@@ -66,8 +66,10 @@ export default defineConfig(({ mode, command }) => {
           manualChunks(id) {
             if (id.includes('node_modules') && /[\\/]node_modules[\\/](?:vue|vue-router|pinia)[\\/]/.test(id))
               return 'vue-vendor'
-            if (id.includes('node_modules') && /[\\/]node_modules[\\/](?:echarts|vue-echarts)[\\/]/.test(id))
-              return 'echarts'
+            // echarts 单独分包在 ECharts 6 + Vite 8 下偶发运行时初始化顺序问题，
+            // 先回归默认打包，确认是否由此导致。
+            // if (id.includes('node_modules') && /[\\/]node_modules[\\/](?:echarts|vue-echarts)[\\/]/.test(id))
+            //   return 'echarts'
           },
         },
       },
