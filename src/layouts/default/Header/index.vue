@@ -31,8 +31,8 @@ const displayName = computed(() => auth.userInfo?.nickname || auth.userInfo?.use
 
 /** 下拉菜单选项 —— key 用 NDropdown 支持的类型 */
 const userMenuOptions: DropdownOption[] = [
-  { key: 'profile', label: '个人资料' },
-  { key: 'settings', label: '账号设置' },
+  { key: 'account', label: '账号设置' },
+  { key: 'settings', label: '系统设置' },
   { type: 'divider', key: 'd1' },
   { key: 'logout', label: '退出登录' },
 ]
@@ -44,11 +44,11 @@ const userMenuOptions: DropdownOption[] = [
  */
 async function onUserMenuSelect(key: string | number) {
   const k = key as string
-  if (k === 'settings') {
-    router.push('/settings')
+  if (k === 'account') {
+    router.push('/profile')
   }
-  else if (k === 'profile') {
-    message.info('个人资料页 v2 再做')
+  else if (k === 'settings') {
+    router.push('/settings')
   }
   else if (k === 'logout') {
     await auth.logout()

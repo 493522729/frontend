@@ -10,6 +10,7 @@ const profileRoutes: RouteRecordRaw[] = [
       icon: 'user',
       order: 98,
       requiresAuth: true,
+      hidden: true,
     },
   },
 ]

@@ -154,10 +154,10 @@ async function onChangePwdSubmit() {
   <div class="settings-page">
     <header class="page-head">
       <h1 class="page-title">
-        设置
+        系统设置
       </h1>
       <p class="page-sub">
-        偏好即时生效并自动保存，刷新后保留。
+        外观、金额配色、备案信息等全局偏好，即时生效并自动保存。
       </p>
     </header>
 

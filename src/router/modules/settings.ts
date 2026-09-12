@@ -6,7 +6,7 @@ const settingsRoutes: RouteRecordRaw[] = [
     name: 'Settings',
     component: () => import('@/views/settings/index.vue'),
     meta: {
-      title: '设置',
+      title: '系统设置',
       icon: 'settings',
       order: 99,
       requiresAuth: true,

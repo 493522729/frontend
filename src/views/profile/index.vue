@@ -262,47 +262,55 @@ async function handleLogout() {
 </template>
 
 <style scoped lang="scss">
+/* 与 settings 页统一：居中容器、统一字号 */
 .profile-page {
-  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lz-space-5);
+  padding: var(--lz-content-padding);
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .profile-header {
-  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .profile-title {
-  margin: 0 0 8px;
-  font-size: 24px;
+  margin: 0;
+  font-size: 20px;
   font-weight: 600;
   color: var(--lz-text-primary);
 }
 
 .profile-subtitle {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--lz-text-secondary);
 }
 
 .profile-card {
-  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lz-space-4);
+  padding: var(--lz-space-5);
   background: var(--lz-bg-card);
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
-  box-shadow: var(--lz-shadow-sm);
-  overflow: hidden;
 }
 
 .card-title {
   margin: 0;
-  padding: 16px 20px 12px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--lz-text-primary);
-  border-bottom: 1px solid var(--lz-border);
 }
 
 .card-body {
-  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .profile-row {
@@ -310,7 +318,7 @@ async function handleLogout() {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
+  padding: 14px 0;
   border-bottom: 1px solid var(--lz-border);
   cursor: pointer;
   transition: background-color var(--lz-duration-base);
