@@ -38,7 +38,7 @@ function toNumber(value: string | undefined, fallback: number): number {
  */
 export function wrapperEnv(raw: Record<string, string>): ViteEnv {
   return {
-    VITE_APP_TITLE: raw.VITE_APP_TITLE || '老赵财务管理系统',
+    VITE_APP_TITLE: raw.VITE_APP_TITLE || '简账',
     VITE_PORT: toNumber(raw.VITE_PORT, 5173),
     VITE_BASE_API: raw.VITE_BASE_API || '/api',
     VITE_PROXY_TARGET: raw.VITE_PROXY_TARGET || 'http://localhost:8080',
