@@ -17,7 +17,6 @@
     },
 
     "resolveJsonModule": true,
-    "allowArbitraryExtensions": true,
     "ignoreDeprecations": "6.0",
 
     /* ── 严格度 ── */

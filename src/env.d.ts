@@ -23,3 +23,17 @@ interface ImportMeta {
   /** 任意 `import.meta.env.XXX` 读取都在这里登记 */
   readonly env: ImportMetaEnv
 }
+// 识别css
+declare module '*.css' {
+  const content: string
+  export default content
+}
+// 识别scss / sass
+declare module '*.scss' {
+  const content: string
+  export default content
+}
+declare module '*.sass' {
+  const content: string
+  export default content
+}
