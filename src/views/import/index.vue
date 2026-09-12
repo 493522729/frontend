@@ -13,7 +13,6 @@ import {
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
-import { mockListCategories } from '@/api/modules/category/mock'
 import { useImportStore } from '@/stores/modules/import'
 
 const store = useImportStore()
@@ -26,6 +25,7 @@ const {
   preview,
   importing,
   result,
+  categories,
   accounts,
   accountId,
   keepDuplicates,
@@ -33,11 +33,9 @@ const {
   fallbackByDirection,
 } = storeToRefs(store)
 
-const categories = mockListCategories()
-
 const categoryOptionsByDir = computed(() => ({
-  income: categories.filter(c => c.type === 'income').map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
-  expense: categories.filter(c => c.type === 'expense').map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
+  income: categories.value.filter(c => c.type === 'income').map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
+  expense: categories.value.filter(c => c.type === 'expense').map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
 }))
 
 const accountOptions = computed(() => accounts.value.map(a => ({ label: a.name, value: a.id })))

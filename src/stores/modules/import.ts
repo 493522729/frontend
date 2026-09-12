@@ -1,9 +1,10 @@
 import type { ColumnMapping, ImportPreview } from '@/types/import'
+import type { Account, Category } from '@/types/transaction'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as XLSX from 'xlsx'
-import { mockListAccounts } from '@/api/modules/account/mock'
-import { mockFindFallbackCategory } from '@/api/modules/category/mock'
+import { listAccounts } from '@/api/modules/account'
+import { findFallbackCategory, listCategories } from '@/api/modules/category'
 import { autoDetectColumns, buildPreview, commitImport } from '@/api/modules/import'
 
 /**
@@ -27,11 +28,25 @@ export const useImportStore = defineStore('import', () => {
   const keepDuplicates = ref(false)
   const categoryOverrides = ref<Record<number, number>>({})
 
-  const accounts = computed(() => mockListAccounts(bookId.value))
-  const fallbackByDirection = computed(() => ({
-    income: mockFindFallbackCategory('income')?.id ?? 0,
-    expense: mockFindFallbackCategory('expense')?.id ?? 0,
-  }))
+  const categories = ref<Category[]>([])
+  const accountsList = ref<Account[]>([])
+  const fallback = ref<{ income: number, expense: number }>({ income: 0, expense: 0 })
+  const accounts = computed(() => accountsList.value)
+  const fallbackByDirection = computed(() => fallback.value)
+
+  /** 加载真实分类 / 账户 / 兜底分类（替换原 mock 假数据） */
+  async function loadRefs() {
+    const [cats, accs, finc, fexp] = await Promise.all([
+      listCategories(),
+      listAccounts(bookId.value),
+      findFallbackCategory('income'),
+      findFallbackCategory('expense'),
+    ])
+    categories.value = cats
+    accountsList.value = accs
+    fallback.value = { income: finc?.id ?? 0, expense: fexp?.id ?? 0 }
+  }
+  loadRefs()
 
   function reset() {
     step.value = 'upload'
@@ -46,6 +61,7 @@ export const useImportStore = defineStore('import', () => {
     accountId.value = null
     keepDuplicates.value = false
     categoryOverrides.value = {}
+    loadRefs()
   }
 
   async function loadFile(file: File) {
@@ -122,6 +138,7 @@ export const useImportStore = defineStore('import', () => {
     accountId,
     keepDuplicates,
     categoryOverrides,
+    categories,
     accounts,
     fallbackByDirection,
     reset,

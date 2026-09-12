@@ -16,11 +16,16 @@ import { useMessage } from 'naive-ui'
  *   - 状态切换时整层淡入淡出 + 缩放，4 个层级视觉清晰
  *   - 倒计时环放在右上角（与 QRPlaceholder 同源，方便集成）
  */
-import { onMounted } from 'vue'
+import { watch } from 'vue'
 import { useAuthStore } from '@/stores/modules/auth'
 import { useScanStatus } from '../composables/useScanStatus'
 import QRPlaceholder from './QRPlaceholder.vue'
 import ScanCountdown from './ScanCountdown.vue'
+
+const props = defineProps<{
+  /** 当前 Tab 是否激活；只有真正可见时才开始轮询，防止 hidden Tab 自动 mock 登录 */
+  active: boolean
+}>()
 
 const emit = defineEmits<{
   /** 扫码登录成功（含 token 已写入 store）；父级统一处理跳转 */
@@ -46,10 +51,19 @@ const scan = useScanStatus({
   },
 })
 
-/** 组件挂载即开始会话 */
-onMounted(() => {
-  scan.refresh()
-})
+/** Tab 激活时才创建会话；切走/卸载时销毁，避免账号 Tab 下 hidden 扫码面板自动登录 */
+watch(
+  () => props.active,
+  (isActive, wasActive) => {
+    if (isActive) {
+      scan.refresh()
+    }
+    else if (wasActive) {
+      scan.destroy()
+    }
+  },
+  { immediate: true },
+)
 
 /** 手动刷新：点「点击刷新」按钮 */
 async function manualRefresh() {

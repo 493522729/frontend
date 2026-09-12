@@ -57,7 +57,10 @@ useHotkey('N', () => quickEntry.open())
 <style scoped lang="scss">
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  // 关键：锁死视口高度并裁掉整体滚动，只让内容区内部滚动，
+  // 这样左侧菜单栏 / 顶栏固定不动，不会跟着右侧页面滚。
+  height: 100vh;
+  overflow: hidden;
   background: var(--lz-bg-page);
 }
 
@@ -72,6 +75,7 @@ useHotkey('N', () => quickEntry.open())
   flex: 1;
   padding: 24px;
   position: relative; // 路由离场时旧页面 absolute 定位在此容器内
+  overflow-y: auto; // 内容区独立滚动，菜单栏不再跟着滚
 }
 
 // 全局悬浮记账按钮：固定右下角，z 层低于 modal（--lz-z-modal: 400）

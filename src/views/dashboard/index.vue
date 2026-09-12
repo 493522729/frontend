@@ -19,7 +19,7 @@ import StatCard from './components/StatCard.vue'
 import TrendLine from './components/TrendLine.vue'
 import { useDashboard } from './composables/useDashboard'
 
-const { overview, totalNetAssets, loading, error, load } = useDashboard()
+const { overview, totalNetAssets, currentBookNetAssets, loading, error, load } = useDashboard()
 const quickEntry = useQuickEntryStore()
 const book = useBookStore()
 
@@ -69,7 +69,7 @@ function openQuickEntry(): void {
           <span class="net-label">资产净值</span>
           <NSkeleton v-if="loading" text width="120px" :height="26" />
           <span v-else class="net-value">
-            {{ formatCents(overview?.netAssets ?? 0, { withSymbol: true }) }}
+            {{ currentBookNetAssets == null ? '—' : formatCents(currentBookNetAssets, { withSymbol: true }) }}
           </span>
         </div>
 

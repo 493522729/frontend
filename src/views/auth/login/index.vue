@@ -98,7 +98,7 @@ function onGoRegister() {
               <AccountPanel @success="onLoginSuccess" />
             </n-tab-pane>
             <n-tab-pane name="scan" tab="微信扫码" display-directive="show">
-              <ScanPanel @success="onLoginSuccess" @switch-tab="activeTab = 'account'" />
+              <ScanPanel :active="activeTab === 'scan'" @success="onLoginSuccess" @switch-tab="activeTab = 'account'" />
             </n-tab-pane>
           </n-tabs>
 
