@@ -135,21 +135,105 @@ instance.interceptors.request.use((config) => {
 /* ──────────────────────────────────────────────────────────────
  * 响应拦截器：到手之后做「解包」和「错误翻译」
  * ──────────────────────────────────────────────────────────── */
+
+/**
+ * 统一的认证错误处理。
+ * 后端有两种方式表达「登录态失效」：
+ *   1. HTTP 401（Spring 直接抛异常）
+ *   2. HTTP 200 但业务码是 40101/40100（Result<T> 约定）
+ * 第二种会进入拦截器的「成功分支」，需要手动包装成 AxiosError 后再走这里。
+ *
+ * 处理流程：
+ *   - 无 refreshToken / 刷新失败 → 清空登录态并跳登录页
+ *   - 有 refreshToken → 只刷新一次，其它并发 401 请求排队，刷新成功后统一重发
+ */
+async function handleAuthError(error: AxiosError<Result>): Promise<AxiosResponse> {
+  // 拿到当时发出去的请求配置，刷新 token 后要靠它「原样重发」
+  const originalRequest = error.config as
+    | (InternalAxiosRequestConfig & { _retry?: boolean })
+    | undefined
+
+  // 情况一：网络层错误（断网 / 超时 / DNS 失败）—— error.response 根本不存在
+  if (!error.response) {
+    throw new ApiError('network', '网络异常，请检查网络连接', undefined, error.message)
+  }
+
+  const status = error.response.status
+
+  // 情况二：token 过期 —— 触发「刷新 + 重发」流程
+  // 兼容两种后端写法：HTTP 401，或 HTTP 200 但业务码是 TOKEN_EXPIRED / UNAUTHORIZED
+  const isTokenExpired
+    = status === 401
+      || error.response.data?.code === BUSINESS_CODE.TOKEN_EXPIRED
+      || error.response.data?.code === BUSINESS_CODE.UNAUTHORIZED
+
+  if (isTokenExpired) {
+    // 2a. 这个请求「本身就是刷新请求」且已经失败（被标记过 _retry）
+    //     → 说明连刷新都救不回来，直接登出
+    if (originalRequest?._retry) {
+      doLogout()
+      throw new ApiError('http', '登录已过期，请重新登录', status)
+    }
+
+    // 2b. 已经有别的请求在刷新了 → 把自己挂到队列里等，不重复刷新
+    if (isRefreshing) {
+      return new Promise((resolve) => {
+        pendingQueue.push((newToken: string) => {
+          if (originalRequest)
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+          // 用新 token 重发原请求，结果会再次经过响应拦截器（此时已是新 token，能成功）
+          resolve(instance(originalRequest!))
+        })
+      })
+    }
+
+    // 2c. 第一个 401：由我来发起刷新（并标记「正在刷新」）
+    isRefreshing = true
+    if (originalRequest)
+      originalRequest._retry = true
+
+    try {
+      const newToken = await refreshAccessToken()
+      flushQueue(newToken) // 重发队列里所有挂起的请求
+      // 重发当前这个 401 请求本身
+      if (originalRequest)
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
+      return instance(originalRequest!)
+    }
+    catch (refreshErr) {
+      // 刷新也失败了：清空队列 + 登出 + 把错误透传出去
+      clearQueue()
+      doLogout()
+      throw refreshErr instanceof ApiError
+        ? refreshErr
+        : new ApiError('http', '登录已过期，请重新登录', status)
+    }
+    finally {
+      // 无论成功失败，刷新动作结束，释放锁
+      isRefreshing = false
+    }
+  }
+
+  // 情况三：其它 HTTP 错误（404 / 500 / 502 ...）
+  const msg = error.response.data?.message || `请求失败（${status}）`
+  throw new ApiError('http', msg, status, error.response.data)
+}
+
 instance.interceptors.response.use(
   // 成功分支：HTTP 状态码是 2xx 才会进这里
-  (response: AxiosResponse<Result>): AxiosResponse => {
+  (response: AxiosResponse<Result>): AxiosResponse | Promise<AxiosResponse> => {
     const body = response.data
 
     // 后端约定：哪怕 HTTP 200，只要业务 code 非成功就是「业务失败」
     if (body.code !== BUSINESS_CODE.SUCCESS) {
-      // 关键：后端用「HTTP 200 + 业务码 40101/40100」表达登录态失效
+      // 后端用「HTTP 200 + 业务码 40101/40100」表达登录态失效
       // （Spring 的 Result<T> 常见约定，而非返回真正的 HTTP 401）。
-      // 这类响应会先进入「成功分支」，必须在这里手动包装成带 response 的
-      // axios 错误，丢给下面的响应拦截器「错误分支」，复用其统一的
-      // 「刷新 token / 跳登录页」流程；否则只会作为普通业务错误上抛
-      // （还常被误判成网络错误），永远触发不了跳转。
+      // 这类响应会先进入「成功分支」，必须显式交给 handleAuthError，
+      // 复用统一的「刷新 token / 跳登录页」流程。
+      // 注意：success handler 里 throw 不会被同一个拦截器的 error handler 捕获，
+      // 所以必须显式 return handleAuthError(...)。
       if (body.code === BUSINESS_CODE.TOKEN_EXPIRED || body.code === BUSINESS_CODE.UNAUTHORIZED) {
-        throw new AxiosError(
+        const authError = new AxiosError(
           body.message,
           'ERR_TOKEN_EXPIRED',
           response.config,
@@ -162,6 +246,7 @@ instance.interceptors.response.use(
             config: response.config,
           } as AxiosResponse<Result>,
         )
+        return handleAuthError(authError)
       }
       throw new ApiError('business', body.message, body.code, body.data)
     }
@@ -176,75 +261,7 @@ instance.interceptors.response.use(
   },
 
   // 错误分支：网络异常 / HTTP 非 2xx 都会进这里
-  async (error: AxiosError<Result>) => {
-    // 拿到当时发出去的请求配置，刷新 token 后要靠它「原样重发」
-    const originalRequest = error.config as
-      | (InternalAxiosRequestConfig & { _retry?: boolean })
-      | undefined
-
-    // 情况一：网络层错误（断网 / 超时 / DNS 失败）—— error.response 根本不存在
-    if (!error.response) {
-      throw new ApiError('network', '网络异常，请检查网络连接', undefined, error.message)
-    }
-
-    const status = error.response.status
-
-    // 情况二：token 过期 —— 触发「刷新 + 重发」流程
-    // 兼容两种后端写法：HTTP 401，或 HTTP 200 但业务码是 TOKEN_EXPIRED
-    const isTokenExpired
-      = status === 401 || error.response.data?.code === BUSINESS_CODE.TOKEN_EXPIRED
-
-    if (isTokenExpired) {
-      // 2a. 这个请求「本身就是刷新请求」且已经失败（被标记过 _retry）
-      //     → 说明连刷新都救不回来，直接登出
-      if (originalRequest?._retry) {
-        doLogout()
-        throw new ApiError('http', '登录已过期，请重新登录', status)
-      }
-
-      // 2b. 已经有别的请求在刷新了 → 把自己挂到队列里等，不重复刷新
-      if (isRefreshing) {
-        return new Promise((resolve) => {
-          pendingQueue.push((newToken: string) => {
-            if (originalRequest)
-              originalRequest.headers.Authorization = `Bearer ${newToken}`
-            // 用新 token 重发原请求，结果会再次经过响应拦截器（此时已是新 token，能成功）
-            resolve(instance(originalRequest!))
-          })
-        })
-      }
-
-      // 2c. 第一个 401：由我来发起刷新（并标记「正在刷新」）
-      isRefreshing = true
-      if (originalRequest)
-        originalRequest._retry = true
-
-      try {
-        const newToken = await refreshAccessToken()
-        flushQueue(newToken) // 重发队列里所有挂起的请求
-        // 重发当前这个 401 请求本身
-        if (originalRequest)
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-        return instance(originalRequest!)
-      }
-      catch (refreshErr) {
-        // 刷新也失败了：清空队列 + 登出 + 把错误透传出去
-        clearQueue()
-        doLogout()
-        throw refreshErr instanceof ApiError
-          ? refreshErr
-          : new ApiError('http', '登录已过期，请重新登录', status)
-      }
-      finally {
-        // 无论成功失败，刷新动作结束，释放锁
-        isRefreshing = false
-      }
-    }
-
-    // 情况三：其它 HTTP 错误（404 / 500 / 502 ...）
-    const msg = error.response.data?.message || `请求失败（${status}）`
-    throw new ApiError('http', msg, status, error.response.data)
-  },
+  async (error: AxiosError<Result>) => handleAuthError(error),
 )
 
 /**
