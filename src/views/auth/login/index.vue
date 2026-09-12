@@ -80,6 +80,7 @@ function onGoRegister() {
         <div class="ambient-bg" aria-hidden="true">
           <div class="ambient-blob blob-1" />
           <div class="ambient-blob blob-2" />
+          <div class="ambient-blob blob-3" />
         </div>
 
         <div class="form-card">
@@ -196,7 +197,7 @@ function onGoRegister() {
 .ambient-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
+  filter: blur(55px);
   transform-origin: center;
 }
 
@@ -228,6 +229,23 @@ function onGoRegister() {
   50% { transform: translate(30px, -30px) scale(1.08); }
 }
 
+/* 偏置光晕：在卡片背后大幅飘动，不固定正后方，毛玻璃透出流动质感 */
+.blob-3 {
+  top: 48%;
+  left: 52%;
+  width: 360px;
+  height: 360px;
+  margin: -180px 0 0 -180px;
+  background: var(--lz-login-blob-3);
+  animation: float-3 14s ease-in-out infinite;
+}
+
+@keyframes float-3 {
+  0%   { transform: translate(-60px, 24px) scale(1); }
+  50%  { transform: translate(56px, -36px) scale(1.12); }
+  100% { transform: translate(-60px, 24px) scale(1); }
+}
+
 .form-card {
   position: relative;
   z-index: 1;
@@ -235,7 +253,9 @@ function onGoRegister() {
   max-width: 420px;
   padding: 32px;
   border-radius: 20px;
-  background: var(--lz-bg-card);
+  background: var(--lz-login-card-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.5) inset,
     0 24px 48px -16px rgba(82, 136, 255, 0.16),
@@ -247,8 +267,6 @@ function onGoRegister() {
       0 1px 0 rgba(255, 255, 255, 0.05) inset,
       0 24px 48px -16px rgba(0, 0, 0, 0.4),
       0 1px 0 rgba(255, 255, 255, 0.05) inset;
-    background: rgba(20, 28, 45, 0.6);
-    backdrop-filter: blur(8px);
   }
 }
 

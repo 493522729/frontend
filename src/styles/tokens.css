@@ -42,6 +42,9 @@
   --lz-login-split-bg: #f7f9fc;
   --lz-login-blob-1: rgba(55, 138, 221, 0.16);
   --lz-login-blob-2: rgba(135, 183, 235, 0.18);
+  --lz-login-blob-3: rgba(55, 138, 221, 0.22);
+  /* 登录卡片毛玻璃底色：亮色白透、暗色深透 */
+  --lz-login-card-bg: rgba(255, 255, 255, 0.72);
 
   /* ─── 通道分量（供 rgb(var(--x) / α%) 用）─────────────────────
      带透明度的颜色不能直接用 hex，必须拆成通道分量，
@@ -148,6 +151,7 @@ html.dark {
   --lz-login-split-bg: #111827;
   --lz-login-blob-1: rgba(45, 95, 165, 0.35);
   --lz-login-blob-2: rgba(30, 58, 95, 0.40);
+  --lz-login-card-bg: rgba(22, 28, 40, 0.68);
 
   /* 通道分量随暗色切换：遮罩/半透明描绘边才不会锁死成亮色 */
   --lz-bg-card-rgb: 26 31 43; /* = #1a1f2b */
