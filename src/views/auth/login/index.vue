@@ -77,11 +77,9 @@ function onGoRegister() {
 
       <!-- 右侧表单 -->
       <section class="split-right">
-        <!-- 动态背景：漂浮光斑 -->
         <div class="ambient-bg" aria-hidden="true">
           <div class="ambient-blob blob-1" />
           <div class="ambient-blob blob-2" />
-          <div class="ambient-blob blob-3" />
         </div>
 
         <div class="form-card">
@@ -130,7 +128,7 @@ function onGoRegister() {
   position: relative;
   width: 100%;
   min-height: 100vh;
-  background: var(--lz-bg-page);
+  background: var(--lz-bg-card);
   overflow: hidden;
 }
 
@@ -148,13 +146,12 @@ function onGoRegister() {
   display: grid;
   place-items: center;
   border: 1px solid var(--lz-border);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
+  background: var(--lz-bg-card);
   border-radius: 10px;
-  color: var(--lz-text-regular);
+  color: var(--lz-text-primary);
   cursor: pointer;
   @include transition-paint();
-  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--lz-shadow-md);
 
   svg {
     width: 18px;
@@ -166,10 +163,6 @@ function onGoRegister() {
     color: var(--lz-primary-600);
     transform: translateY(-1px);
     box-shadow: 0 8px 24px -6px rgb(var(--lz-primary-rgb) / 30%);
-  }
-
-  :global(html.dark) & {
-    background: rgba(255, 255, 255, 0.04);
   }
 }
 
@@ -190,15 +183,7 @@ function onGoRegister() {
   padding: 32px 48px;
   overflow: hidden;
   isolation: isolate;
-  background:
-    radial-gradient(circle at 50% 0%, rgb(var(--lz-primary-rgb) / 7%), transparent 50%),
-    var(--lz-bg-card);
-
-  :global(html.dark) & {
-    background:
-      radial-gradient(circle at 50% 0%, rgb(var(--lz-primary-rgb) / 12%), transparent 50%),
-      var(--lz-bg-page);
-  }
+  background: var(--lz-login-split-bg);
 }
 
 .ambient-bg {
@@ -211,55 +196,36 @@ function onGoRegister() {
 .ambient-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.55;
+  filter: blur(80px);
   transform-origin: center;
-
-  :global(html.dark) & {
-    opacity: 0.38;
-  }
 }
 
 .blob-1 {
   top: -120px;
   right: -80px;
-  width: 420px;
-  height: 420px;
-  background: radial-gradient(circle, rgb(var(--lz-primary-rgb) / 0.32) 0%, transparent 65%);
-  animation: float-1 14s ease-in-out infinite;
+  width: 440px;
+  height: 440px;
+  background: var(--lz-login-blob-1);
+  animation: float-1 18s ease-in-out infinite;
 }
 
 .blob-2 {
-  bottom: -80px;
-  left: -60px;
-  width: 360px;
-  height: 360px;
-  background: radial-gradient(circle, rgb(var(--lz-primary-rgb) / 0.26) 0%, transparent 60%);
-  animation: float-2 18s ease-in-out infinite reverse;
-}
-
-.blob-3 {
-  top: 42%;
-  left: 58%;
+  bottom: -60px;
+  left: -40px;
   width: 280px;
   height: 280px;
-  background: radial-gradient(circle, rgb(var(--lz-primary-rgb) / 0.22) 0%, transparent 62%);
-  animation: float-3 22s ease-in-out infinite;
+  background: var(--lz-login-blob-2);
+  animation: float-2 22s ease-in-out infinite reverse;
 }
 
 @keyframes float-1 {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-30px, 40px) scale(1.08); }
+  50% { transform: translate(-30px, 40px) scale(1.05); }
 }
 
 @keyframes float-2 {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(40px, -30px) scale(1.12); }
-}
-
-@keyframes float-3 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-20px, -20px) scale(1.06); }
+  50% { transform: translate(30px, -30px) scale(1.08); }
 }
 
 .form-card {
@@ -268,22 +234,21 @@ function onGoRegister() {
   width: 100%;
   max-width: 420px;
   padding: 32px;
-  border-radius: 24px;
-  background: rgba(var(--lz-bg-card-rgb), 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 20px;
+  background: var(--lz-bg-card);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.4) inset,
-    0 24px 60px -16px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(20px) saturate(160%);
-  @include transition-paint();
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 24px 48px -16px rgba(82, 136, 255, 0.16),
+    0 1px 0 var(--lz-border) inset;
+  border: 1px solid var(--lz-border);
 
   :global(html.dark) & {
-    background: rgba(var(--lz-bg-card-rgb), 0.55);
-    border-color: rgba(255, 255, 255, 0.08);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.05) inset,
-      0 24px 60px -16px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(24px) saturate(150%);
+      0 24px 48px -16px rgba(0, 0, 0, 0.4),
+      0 1px 0 rgba(255, 255, 255, 0.05) inset;
+    background: rgba(20, 28, 45, 0.6);
+    backdrop-filter: blur(8px);
   }
 }
 

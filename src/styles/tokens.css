@@ -38,6 +38,11 @@
   --lz-bg-card: #ffffff;
   --lz-bg-hover: var(--lz-primary-50);
 
+  /* ─── 登录页右侧背景（深浅两档，随 html.dark 反转）────────── */
+  --lz-login-split-bg: #f7f9fc;
+  --lz-login-blob-1: rgba(55, 138, 221, 0.16);
+  --lz-login-blob-2: rgba(135, 183, 235, 0.18);
+
   /* ─── 通道分量（供 rgb(var(--x) / α%) 用）─────────────────────
      带透明度的颜色不能直接用 hex，必须拆成通道分量，
      否则暗色模式下会锁死成亮色的白/蓝（真 bug：暗色下遮罩一片白） */
@@ -138,6 +143,11 @@ html.dark {
   --lz-bg-page: #12161f;
   --lz-bg-card: #1a1f2b;
   --lz-bg-hover: #222a37;
+
+  /* ─── 登录页右侧背景（暗色档）────────── */
+  --lz-login-split-bg: #111827;
+  --lz-login-blob-1: rgba(45, 95, 165, 0.35);
+  --lz-login-blob-2: rgba(30, 58, 95, 0.40);
 
   /* 通道分量随暗色切换：遮罩/半透明描绘边才不会锁死成亮色 */
   --lz-bg-card-rgb: 26 31 43; /* = #1a1f2b */
