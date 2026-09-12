@@ -107,4 +107,6 @@ export interface Category {
   icon: string
   color: string
   parentId: number | null
+  /** 排序权重：同 type+parentId 组内升序 */
+  sortOrder?: number
 }

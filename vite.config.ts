@@ -47,7 +47,7 @@ export default defineConfig(({ mode, command }) => {
         [env.VITE_BASE_API]: {
           target: env.VITE_PROXY_TARGET,
           changeOrigin: true,
-          rewrite: path => path.replace(new RegExp(`^${env.VITE_BASE_API}`), ''),
+          // 后端控制器已带 /api 前缀（如 /api/auth/login），原样转发，不要剥离
         },
       },
     },

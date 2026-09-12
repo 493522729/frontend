@@ -37,7 +37,7 @@ export interface BudgetProgress {
   categoryIcon: string
   /** 分类色（进度条底色与分类设置页保持一致） */
   categoryColor: string
-  /** 当月实际花费（分）：分类预算 = 该分类支出合计；总预算 = 全部支出合计 */
+  /** 当月实际花费（分）：分类预算 = 该分类及其所有子分类支出合计；总预算 = 全部支出合计 */
   spent: number
   /** 剩余额度（分，可为负 = 超支额） */
   remaining: number
