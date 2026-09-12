@@ -560,3 +560,57 @@ useHotkey('/', focusKeyword, { allowInInput: false }) // 可显式覆盖
 | `N` | 记一笔 | 架构 §4.2 原定主入口，作为单键别名补齐 |
 | `⌘B` | 折叠侧边栏 | 已迁到 useHotkey |
 | `/` | 列表页聚焦搜索 | 从 ⌘K 改回，冲突解除 |
+
+---
+
+## 18. 空态插画 + 品牌区定色 + 可视化大屏（US-014，2026-09-11）
+
+### 18.1 统一空态组件 EmptyState
+
+之前 7 处空态是 emoji 硬编码（📊🏦🔍📉📒），风格不统一。收口为 `components/business/empty-state/index.vue`：
+
+- **6 套内联 SVG**（ledger/search/wallet/rule/recurring/chart），零外部资源；颜色只用三个 token（primary-400 线条、`rgb(var(--lz-primary-rgb)/12%)` 填充、border 中性），暗色自动跟随
+- 插画三条设计原则：几何化（财务产品要克制）、线性为主（2.4px 描边）、留白（viewBox 120 里图形只占 ~72）
+- `size="sm"` 图表内嵌 80px / 默认整页 112px；默认 slot 放行动按钮
+- 替换了 dashboard/transaction/account/asset/rule/recurring/report 共 **7 处**
+
+**教训：替换完必须 grep 回查**（`class="(chart-empty|card-empty|...)"`）—— 报表中心的 📉 就是靠回查抓出来的漏网。
+
+### 18.2 登录品牌区定色：晨雾蓝深底（方案 C）
+
+原 `#5288ff→#7d5fff` 蓝紫渐变与晨雾蓝两套色并存。老赵从三个方案里拍板「深色品牌区」：
+
+- 背景 `primary-900→700` 渐变 + `rgb(var(--lz-primary-rgb)/30%)` 光斑；logo 渐变 primary-300→500；标题白字渐变、强调字 primary-300
+- **附带收益：删掉了整个 `is-dark` 分支** —— 品牌区是「海报」不是「内容区」，本就不该跟主题明暗变；深浅模式共用一套深底，代码少一半
+- 右侧表单区的 EP 残留 `rgba(82,136,255,…)` 顺带清成 `rgb(var(--lz-primary-rgb)/5%)`
+
+### 18.3 可视化大屏（US-014）的三个刻意例外
+
+大屏定位是**给面试官看的海报**，不是用户页面，所以三条与全站规范相反的决策：
+
+1. **固定深色不跟主题**：投影/暗室演示，亮色主题下投出来会惨白。不用 `useChartPalette`，写死深色色板常量
+2. **1920×1080 固定画布 + transform scale 等比缩放**：响应式布局会把设计稿拆散；且 scale 只改视觉尺寸不改布局尺寸，ECharts 无需 resize
+3. **走 BlankLayout 全屏**，但**必须留逃生口**：右上角退出按钮 + Esc（useHotkey），否则进去出不来
+
+**大屏布局踩坑（真 bug）**：`display:grid; place-items:center` 居中一个比视口大的 1920×1080 子项时，溢出对齐行为不可靠 —— 实测内容偏向右下、左上露大片底色。**标准做法是绝对定位 50% + `translate(-50%,-50%) scale(s)`**，任何 scale 值都严格居中。
+
+其他要点：
+
+- 路由**不能**放 `router/modules/`：那里 `layout:'blank'` 的模块会被 `defaultRoutes` 的 filter 静默丢弃，必须在 `router/index.ts` 手写（与 login/register 同款）
+- `AccountBalance` 只有 accountId 没有名字，账户名要拿 accountStore 回填
+- ECharts label formatter 参数别标窄类型：value 是 `string|number|Date|…|null` 联合，标 `number` 直接 TS2769，写 `{ value?: unknown }` 再 `Number()` 转换
+- 数据零新增接口：overview（KPI/趋势/分类）+ accountBalances（排行）+ listTransactions（流水）三个现有 API 全够用
+
+### 19. 后端路线与契约（2026-09-10 规划）
+
+后端文档两份：`docs/backend-roadmap.md`（地图）、`docs/backend-learning.md`（0 基础教材）。核心契约（前端已定死，后端必须对齐）：
+
+- **响应体**：`{code,message,data}`，HTTP 恒 200，成败看 code；`BUSINESS_CODE`：SUCCESS=200 / UNAUTHORIZED=40100 / TOKEN_EXPIRED=40101 / FORBIDDEN=40300
+- **金额铁律**：全整数分，DB `BIGINT`，Java `Long`，禁用 `double`（架构 ADR-7）
+- **鉴权**：Bearer JWT 双票（access+refresh）；刷新端点 `/api/auth/refresh` POST `{refreshToken}`；前端 request.ts 收到 40101 自动换新且并发只刷一次
+- **聚合口径**：收入=income 求和、支出=expense 求和、**转账不计入收支**；结余=收入−支出；净值=Σ账户余额（转账一进一出抵消）；余额派生不落库 `init+income-expense-transferOut+transferIn`
+- **前端切换=0 改动**：改 `VITE_BASE_API`、vite proxy target、删 `src/api/modules/*/mock.ts` + `mock-latency.ts`，把 `simulateLatency(mockXxx())` 换成 `http.get/post('/xxx', ...)`
+
+**交付顺序 P0→P5**：环境→骨架(Result/异常/JPA/9表)→鉴权→基础CRUD(book/category/account/transaction)→聚合(dashboard/净值/报表/budget)→高级(recurring/rule/import/扫码)。每个 Phase 切对应前端模块验真。
+
+**骨架已落地（2026-09-11）**：`backend/`（Spring Boot 3.3.5 + Java 17 + JPA + H2 + jjwt）已跑通登录/注册/刷新/改密/profile，admin/admin 可直登。两个 H2 踩坑：①保留字列名（month/trigger）需 `spring.jpa.properties.hibernate.globally_quoted_identifiers=true`；②`@Lob` 别配 `columnDefinition="TEXT"`，H2 PG 模式不认 TEXT 域，只用 `@Lob` 即可。下一步 P3 接 book/category/account/transaction CRUD。
