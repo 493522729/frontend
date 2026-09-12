@@ -179,6 +179,25 @@ async function onChangePwdSubmit() {
     <section class="setting-card">
       <div class="setting-head">
         <h2 class="setting-title">
+          快捷键
+        </h2>
+      </div>
+      <ul class="shortcut-list">
+        <li><span>快速记账</span><b><kbd>Cmd</kbd><kbd>K</kbd> / <kbd>N</kbd></b></li>
+        <li><span>命令面板</span><b><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>P</kbd></b></li>
+        <li><span>切换侧边栏</span><b><kbd>Cmd</kbd><kbd>B</kbd></b></li>
+        <li><span>关闭弹窗 / 面板</span><b><kbd>Esc</kbd></b></li>
+        <li><span>交易页聚焦搜索</span><b><kbd>/</kbd></b></li>
+        <li><span>交易页切换状态筛选</span><b><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></b></li>
+      </ul>
+      <p class="setting-note">
+        Cmd 在 Windows 上对应 Ctrl；单字母快捷键（如 <kbd>N</kbd>、<kbd>/</kbd>、<kbd>1~3</kbd>）在输入框内自动失效，不会打断打字。
+      </p>
+    </section>
+
+    <section class="setting-card">
+      <div class="setting-head">
+        <h2 class="setting-title">
           关于
         </h2>
       </div>
@@ -186,7 +205,7 @@ async function onChangePwdSubmit() {
         <li><span>产品</span><b>老赵财务中台</b></li>
         <li><span>定位</span><b>个人 / 家庭财务中台（记账 + 多账本 + 报表）</b></li>
         <li><span>技术栈</span><b>Vue 3 · TypeScript · Naive UI · ECharts 6 · Vite</b></li>
-        <li><span>数据状态</span><b>当前为前端 Mock 演示，后端联调后自动切换</b></li>
+        <li><span>数据状态</span><b>已对接真实后端，数据落库持久化</b></li>
       </ul>
     </section>
 
@@ -342,6 +361,55 @@ async function onChangePwdSubmit() {
     color: var(--lz-text-primary);
     font-weight: 500;
     text-align: right;
+  }
+}
+
+.shortcut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--lz-text-secondary);
+    flex-shrink: 0;
+  }
+
+  b {
+    color: var(--lz-text-primary);
+    font-weight: 500;
+    text-align: right;
+  }
+
+  kbd {
+    display: inline-grid;
+    place-items: center;
+    min-width: 24px;
+    height: 22px;
+    padding: 0 6px;
+    margin-left: 4px;
+    font-family: var(--lz-font-num);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--lz-text-regular);
+    background: var(--lz-bg-page);
+    border: 1px solid var(--lz-border);
+    border-radius: var(--lz-radius-sm);
+    box-shadow: 0 1px 0 var(--lz-border);
+
+    &:first-of-type {
+      margin-left: 0;
+    }
   }
 }
 </style>
