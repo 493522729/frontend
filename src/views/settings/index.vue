@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import type { FormInst, FormRules } from 'naive-ui'
-import type { ThemeMode } from '@/stores/modules/app'
-import type { MoneyColorMode } from '@/stores/modules/settings'
-import { NButton, NForm, NFormItem, NInput, NModal, NRadioButton, NRadioGroup, NSpace, useMessage } from 'naive-ui'
-import { computed, reactive, ref } from 'vue'
+import type { AmountColorMode, ThemeMode } from '@/types/site-config'
+import { NButton, NForm, NFormItem, NInput, NModal, NRadioButton, NRadioGroup, NSpace, NSwitch, useMessage } from 'naive-ui'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
-import { useSettingsStore } from '@/stores/modules/settings'
+import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 
 /**
  * 设置页（Now 清单 #3，PRD §15.2.1）
  * ====================================================================
- * 当前只有「顶栏临时切主题」，缺集中设置入口。这里把全局偏好收口：
- *   1. 主题模式（跟随系统 / 浅色 / 深色）—— 走 app store（已持久化）
- *   2. 金额配色偏好（收入绿/支出红 ↔ A 股收入红/支出绿）—— 走 settings store
- *   3. 账号安全（修改密码）—— 弹窗走 auth.changePassword
- * 所有改动即时生效、即时持久化，无需保存按钮。
+ * 全局偏好收口，全部落库到后端 SiteConfig（站点级，单一真相源）：
+ *   1. 外观主题（跟随系统 / 浅色 / 深色）
+ *   2. 金额配色（收入绿/支出红 ↔ A 股收入红/支出绿）
+ *   3. 备案信息
+ *   4. 账号安全（修改密码）—— 弹窗走 auth.changePassword
+ * 所有改动即时生效、即时落库，无需保存按钮。
  */
 const app = useAppStore()
-const settings = useSettingsStore()
 const auth = useAuthStore()
+const siteConfig = useSiteConfigStore()
 const message = useMessage()
 const themeOptions = [
   { label: '跟随系统', value: 'auto' as ThemeMode },
@@ -28,21 +28,23 @@ const themeOptions = [
 ]
 
 const moneyColorOptions = [
-  { label: '收入绿 · 支出红（默认）', value: 'income-green' as MoneyColorMode, desc: '花钱=警示红，符合记账直觉' },
-  { label: '收入红 · 支出绿（A 股习惯）', value: 'income-red' as MoneyColorMode, desc: '与股票涨红跌绿保持一致' },
+  { label: '收入绿 · 支出红（默认）', value: 'income-green' as AmountColorMode, desc: '花钱=警示红，符合记账直觉' },
+  { label: '收入红 · 支出绿（A 股习惯）', value: 'income-red' as AmountColorMode, desc: '与股票涨红跌绿保持一致' },
 ]
 
 const currentMoneyColorDesc = computed(
-  () => moneyColorOptions.find(o => o.value === settings.moneyColorMode)?.desc ?? '',
+  () => moneyColorOptions.find(o => o.value === (siteConfig.config.amountColorMode ?? 'income-green'))?.desc ?? '',
 )
 
-function onThemeChange(mode: ThemeMode) {
+async function onThemeChange(mode: ThemeMode) {
+  // 落库为站点默认，并即时预览
+  await siteConfig.update({ themeMode: mode })
   app.setThemeMode(mode)
   message.success('主题已更新')
 }
 
-function onMoneyColorChange(mode: MoneyColorMode) {
-  settings.moneyColorMode = mode
+async function onMoneyColorChange(mode: AmountColorMode) {
+  await siteConfig.update({ amountColorMode: mode })
   message.success('金额配色已更新')
 }
 
@@ -57,6 +59,36 @@ const pwdForm = reactive({
   newPassword: '',
   confirmPassword: '',
 })
+
+// ── 备案信息配置 ──────────────────────────────────────────────────
+const icpSubmitting = ref(false)
+const icpForm = reactive({
+  showFooter: true,
+  footerText: '',
+  icpNo: '',
+  icpLink: '',
+})
+
+onMounted(async () => {
+  await siteConfig.load()
+  icpForm.showFooter = siteConfig.config.showFooter
+  icpForm.footerText = siteConfig.config.footerText ?? ''
+  icpForm.icpNo = siteConfig.config.icpNo ?? ''
+  icpForm.icpLink = siteConfig.config.icpLink ?? ''
+})
+
+async function onSaveIcp() {
+  if (icpSubmitting.value)
+    return
+  icpSubmitting.value = true
+  try {
+    await siteConfig.update({ ...icpForm })
+    message.success('备案信息已保存')
+  }
+  finally {
+    icpSubmitting.value = false
+  }
+}
 
 const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
@@ -141,6 +173,9 @@ async function onChangePwdSubmit() {
           {{ opt.label }}
         </NRadioButton>
       </NRadioGroup>
+      <p class="setting-note">
+        此项为<strong>站点级默认主题</strong>，落库保存。个人在登录页 / 顶栏手动切换后会以本地偏好为准。
+      </p>
     </section>
 
     <section class="setting-card">
@@ -150,7 +185,7 @@ async function onChangePwdSubmit() {
         </h2>
         <span class="setting-hint">{{ currentMoneyColorDesc }}</span>
       </div>
-      <NRadioGroup :value="settings.moneyColorMode" @update:value="onMoneyColorChange">
+      <NRadioGroup :value="siteConfig.config.amountColorMode ?? 'income-green'" @update:value="onMoneyColorChange">
         <NRadioButton v-for="opt in moneyColorOptions" :key="opt.value" :value="opt.value">
           {{ opt.label }}
         </NRadioButton>
@@ -193,6 +228,46 @@ async function onChangePwdSubmit() {
       <p class="setting-note">
         Cmd 在 Windows 上对应 Ctrl；单字母快捷键（如 <kbd>N</kbd>、<kbd>/</kbd>、<kbd>1~3</kbd>）在输入框内自动失效，不会打断打字。
       </p>
+    </section>
+
+    <section class="setting-card">
+      <div class="setting-head">
+        <h2 class="setting-title">
+          备案信息
+        </h2>
+        <span class="setting-hint">全局页脚展示，备案通过后可替换为正式备案号</span>
+      </div>
+      <NForm label-placement="top" :show-feedback="false">
+        <NFormItem label="展示页脚">
+          <NSwitch v-model:value="icpForm.showFooter" />
+        </NFormItem>
+        <NFormItem label="页脚文案">
+          <NInput
+            v-model:value="icpForm.footerText"
+            placeholder="本网站正在备案中"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem label="备案号">
+          <NInput
+            v-model:value="icpForm.icpNo"
+            placeholder="如：京ICP备12345678号-1"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem label="备案链接">
+          <NInput
+            v-model:value="icpForm.icpLink"
+            placeholder="https://beian.miit.gov.cn/"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem>
+          <NButton type="primary" :loading="icpSubmitting" @click="onSaveIcp">
+            保存备案信息
+          </NButton>
+        </NFormItem>
+      </NForm>
     </section>
 
     <section class="setting-card">

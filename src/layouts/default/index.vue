@@ -3,6 +3,7 @@ import CommandPalette from '@/components/business/command-palette/index.vue'
 import QuickEntry from '@/components/business/quick-entry/index.vue'
 import { useHotkey } from '@/composables/useHotkey'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
+import IcpFooter from '@/components/business/icp-footer/index.vue'
 import Header from './Header/index.vue'
 import Sidebar from './Sidebar/index.vue'
 
@@ -34,6 +35,9 @@ useHotkey('N', () => quickEntry.open())
           </Transition>
         </RouterView>
       </main>
+
+      <!-- 全局备案字号页脚 -->
+      <IcpFooter />
     </div>
 
     <!-- 全局悬浮记账按钮（右下角 FAB） -->
@@ -72,10 +76,14 @@ useHotkey('N', () => quickEntry.open())
 }
 
 .layout-content {
+  // 传给路由离场动画，让 absolute 定位的旧页面精确贴合 content box
+  --layout-content-padding: 24px;
   flex: 1;
-  padding: 24px;
+  padding: var(--layout-content-padding);
   position: relative; // 路由离场时旧页面 absolute 定位在此容器内
   overflow-y: auto; // 内容区独立滚动，菜单栏不再跟着滚
+  // 预留滚动条槽位：避免页面切换时因滚动条显隐导致整体布局左右闪动
+  scrollbar-gutter: stable;
 }
 
 // 全局悬浮记账按钮：固定右下角，z 层低于 modal（--lz-z-modal: 400）

@@ -1,12 +1,14 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { ref } from 'vue'
-import { STORAGE_KEYS } from '@/constants/storage-keys'
+import { computed } from 'vue'
+import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 
 /**
  * 设置 store（Now 清单 #3）
  * ====================================================================
- * 只放「全局偏好」：金额配色模式（默认 收入绿/支出红，可切 A 股习惯
- * 收入红/支出绿）。主题模式在 app store，二者职责分开。
+ * 只放「金额配色算法」：把逻辑色调映射成语义颜色（success / danger / neutral）。
+ * 金额配色「偏好值」已落库到后端 SiteConfig（站点级），此处不再自管，
+ * 直接从 siteConfig 读取，保证单一真相源。toneFor 的对外 API 不变，
+ * 所有调用方（report / dashboard / asset / transaction）零改动。
  *
  * 为什么金额配色做成全局开关而不是各页面硬编码：
  *   架构文档 3.1 明确「颜色不是唯一编码」——金额永远带 +/− 符号，
@@ -17,8 +19,10 @@ export type MoneyColorMode = 'income-green' | 'income-red'
 export type AmountTone = 'success' | 'danger' | 'neutral'
 
 export const useSettingsStore = defineStore('settings', () => {
-  /** 金额配色偏好：默认收入绿/支出红（记账直觉），A 股习惯可切 */
-  const moneyColorMode = ref<MoneyColorMode>('income-green')
+  /** 金额配色偏好：默认收入绿/支出红（记账直觉），A 股习惯可切。来源为落库的站点配置 */
+  const moneyColorMode = computed<MoneyColorMode>(
+    () => useSiteConfigStore().config.amountColorMode ?? 'income-green',
+  )
 
   /**
    * 把「逻辑色调」映射成语义颜色（success / danger / neutral）
@@ -36,11 +40,6 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   return { moneyColorMode, toneFor }
-}, {
-  persist: {
-    key: STORAGE_KEYS.moneyColorMode,
-    pick: ['moneyColorMode'],
-  },
 })
 
 if (import.meta.hot)

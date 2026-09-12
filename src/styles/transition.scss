@@ -25,11 +25,9 @@
   transform: translateY(-4px);
 }
 
-/* 离开的元素脱离文档流，否则新旧两个页面会同时占位把内容顶下去 */
-.fade-slide-leave-active {
-  position: absolute;
-  width: 100%;
-}
+/* 路由用的是 mode="out-in"：旧页完全离场后新页才挂载，不会重叠，
+   因此离场页无需 absolute 脱离文档流。
+   若加 absolute 会把矮页面撑满容器、内部垂直分布错位，反而导致纵向跳动。 */
 
 /* ── 列表项进出（新增/删除交易行）── */
 .list-enter-active,

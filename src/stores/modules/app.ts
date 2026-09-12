@@ -42,6 +42,16 @@ export const useAppStore = defineStore('app', () => {
       localStorage.setItem(STORAGE_KEYS.themeMode, mode)
   }
 
+  /**
+   * 应用站点级默认主题（来自后端 SiteConfig）。
+   * 仅当用户未手动选择过主题（localStorage 无记录）时才生效，
+   * 已手动选过则保留个人偏好，站点默认不覆盖。
+   */
+  function applySiteTheme(mode: ThemeMode) {
+    if (!localStorage.getItem(STORAGE_KEYS.themeMode))
+      themeMode.value = mode
+  }
+
   /** 主题切换按钮：当前生效暗色则切到 light，否则切到 dark */
   function toggleDark() {
     setThemeMode(isDark.value ? 'light' : 'dark')
@@ -57,6 +67,7 @@ export const useAppStore = defineStore('app', () => {
     isDark,
     themeMode,
     setThemeMode,
+    applySiteTheme,
     toggleDark,
     sidebarCollapsed,
     toggleSidebar,

@@ -5,8 +5,6 @@
 export const STORAGE_KEYS = {
   /** Pinia 持久化命名空间 */
   piniaPrefix: 'laozhao:',
-  /** 金额配色偏好（收入红/绿切换，见架构文档 3.1） */
-  moneyColorMode: 'laozhao:money-color-mode',
   /** 表格列配置（key 含页面路径，如 laozhao:columns:/transaction） */
   columnsPrefix: 'laozhao:columns:',
   /** 主题锁定模式 */
