@@ -233,6 +233,11 @@ instance.interceptors.response.use(
       // 注意：success handler 里 throw 不会被同一个拦截器的 error handler 捕获，
       // 所以必须显式 return handleAuthError(...)。
       if (body.code === BUSINESS_CODE.TOKEN_EXPIRED || body.code === BUSINESS_CODE.UNAUTHORIZED) {
+        // 登录接口的 40100 是「用户名或密码错误」，应作为业务错误直接展示，
+        // 不能走 token 刷新/登出流程，否则会覆盖后端原本友好的错误提示。
+        if (body.code === BUSINESS_CODE.UNAUTHORIZED && response.config.url?.endsWith('/auth/login')) {
+          throw new ApiError('business', body.message, body.code, body.data)
+        }
         const authError = new AxiosError(
           body.message,
           'ERR_TOKEN_EXPIRED',

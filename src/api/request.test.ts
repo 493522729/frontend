@@ -116,6 +116,26 @@ describe('请求层 request', () => {
     expect((err as ApiError).message).toBe('余额不足')
   })
 
+  it('登录失败：http 200 + code 40100 → 抛 business 错误并保留后端提示', async () => {
+    installMock(() => ({
+      status: 200,
+      data: { code: 40100, message: '用户名或密码错误', data: null },
+    }))
+
+    let err: unknown
+    try {
+      await http.post('/auth/login', { username: 'wrong', password: 'wrong' })
+    }
+    catch (e) {
+      err = e
+    }
+
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).type).toBe('business')
+    expect((err as ApiError).code).toBe(40100)
+    expect((err as ApiError).message).toBe('用户名或密码错误')
+  })
+
   it('http 错误：状态码非 2xx → 抛 http 错误', async () => {
     installMock(() => ({
       status: 500,
