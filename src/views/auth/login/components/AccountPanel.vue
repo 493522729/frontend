@@ -75,7 +75,7 @@ async function submit() {
 
   try {
     await auth.login({ username: form.username, password: form.password })
-    message.success(`欢迎回来，${form.username || '老赵'}！`, { duration: 1800 })
+    message.success(`欢迎回来，${form.username || '用户'}！`, { duration: 1800 })
     emit('success')
   }
   catch (e: unknown) {
