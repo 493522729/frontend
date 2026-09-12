@@ -37,8 +37,17 @@ export interface UserInfo {
   username: string
   nickname: string
   avatar?: string
+  /** 手机号，可选 */
+  phone?: string
   /** 角色，用于权限控制（P0 后续做菜单权限时会用到） */
   roles: string[]
+}
+
+/** 更新个人资料入参 */
+export interface UpdateProfileParams {
+  nickname?: string
+  avatar?: string
+  phone?: string
 }
 
 /** 修改密码入参 */
@@ -76,5 +85,10 @@ export const userApi = {
   /** 获取当前登录用户信息 */
   getProfile() {
     return http.get<UserInfo>('/user/profile')
+  },
+
+  /** 更新当前登录用户资料（昵称/头像/手机号） */
+  updateProfile(params: UpdateProfileParams) {
+    return http.put<UserInfo>('/user/profile', params)
   },
 }

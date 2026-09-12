@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import CommandPalette from '@/components/business/command-palette/index.vue'
+import IcpFooter from '@/components/business/icp-footer/index.vue'
 import QuickEntry from '@/components/business/quick-entry/index.vue'
 import { useHotkey } from '@/composables/useHotkey'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
-import IcpFooter from '@/components/business/icp-footer/index.vue'
 import Header from './Header/index.vue'
 import Sidebar from './Sidebar/index.vue'
 
