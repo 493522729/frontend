@@ -340,7 +340,8 @@ async function handleLogout() {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 0;
+  padding: 14px 16px;
+  margin: 0 -16px;
   border-bottom: 1px solid var(--lz-border);
   cursor: pointer;
   transition: background-color var(--lz-duration-base);
