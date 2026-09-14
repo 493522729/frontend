@@ -41,10 +41,14 @@ const option = computed<LineOption>(() => {
       trigger: 'axis',
       ...tooltipStyle(p),
       formatter: (raw: unknown) => {
-        const items = raw as { name: string, seriesName: string, value: number, marker?: string }[]
+        const items = raw as { name: string, seriesName: string, value: number, dataIndex: number, marker?: string }[]
         if (!items.length)
           return ''
-        const head = monthLabel(parseMonth(items[0]!.name))
+        // x 轴 label 是「3月」这种简写，parseMonth 只认 YYYY-MM；
+        // 用 dataIndex 回查原始点，拿到真实月份后格式化为「2026年3月」。
+        const first = items[0]!
+        const point = props.points[first.dataIndex]
+        const head = point ? monthLabel(parseMonth(point.month)) : first.name
         const rows = items.map(
           i => `${i.marker ?? ''}${i.seriesName}  ${formatCents(i.value, { withSymbol: true })}`,
         )

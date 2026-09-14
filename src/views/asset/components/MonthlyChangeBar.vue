@@ -61,14 +61,18 @@ const option = computed<BarOption>(() => {
       // 柱状图用 shadow 指示器：整列底色变深，比一条细线更容易对上「哪个月」
       axisPointer: { type: 'shadow', shadowStyle: { color: withAlpha(p.border, 0.4) } },
       formatter: (raw: unknown) => {
-        const items = raw as { name: string, value: number, marker?: string }[]
+        const items = raw as { name: string, value: number, dataIndex: number, marker?: string }[]
         const first = items[0]
         if (!first)
           return ''
+        // x 轴显示的是「3月」这类简写，不能传给 parseMonth；
+        // 用 dataIndex 取原始点的 YYYY-MM 才能正确格式化为「2026年3月」。
+        const point = props.points[first.dataIndex]
+        const head = point ? monthLabel(parseMonth(point.month)) : first.name
         const net = first.value
         const sign = net > 0 ? '+' : ''
         return [
-          monthLabel(parseMonth(first.name)),
+          head,
           `净增  ${sign}${formatCents(net, { withSymbol: true })}`,
         ].join('<br/>')
       },
