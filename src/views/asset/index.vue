@@ -18,6 +18,7 @@ import type { AmountTone } from '@/stores/modules/settings'
 import type { NetWorthTrend } from '@/types/stats'
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import AnimatedMoney from '@/components/base/animated-money/index.vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
@@ -81,6 +82,13 @@ interface Kpi {
   key: string
   label: string
   value: string
+  /**
+   * 金额卡的金额（分）；非金额卡（如「净资产最高月」是月份文案）传 null，
+   * 模板据此决定走 AnimatedMoney 滚动还是静态文本
+   */
+  cents: number | null
+  /** 金额卡是否带 +/− 号（净增要带，回撤天然为正不带） */
+  withSign?: boolean
   sub: string
   /** 卡片顶部色条与主数字的颜色（CSS 变量名） */
   toneVar: string
@@ -102,6 +110,7 @@ const kpis = computed<Kpi[]>(() => {
       key: 'net',
       label: '当前净资产',
       value: formatCents(t.endNetAssets, { withSymbol: true }),
+      cents: t.endNetAssets,
       sub: `区间起点 ${formatCents(t.startNetAssets, { withSymbol: true })}`,
       // 存量数字没有正负倾向，用品牌主色做色条 —— 它是这一页的主角
       toneVar: 'var(--lz-primary-600)',
@@ -110,6 +119,8 @@ const kpis = computed<Kpi[]>(() => {
       key: 'change',
       label: `近 ${months.value} 个月净增`,
       value: signed(t.change),
+      cents: t.change,
+      withSign: true,
       sub: `${percentText(t.changePercent)} · 区间累计`,
       toneVar: toneColorVar(changeTone),
     },
@@ -117,6 +128,7 @@ const kpis = computed<Kpi[]>(() => {
       key: 'peak',
       label: '净资产最高月',
       value: t.peak ? monthLabel(parseMonth(t.peak.month)) : '—',
+      cents: null,
       sub: t.peak ? formatCents(t.peak.netAssets, { withSymbol: true }) : '暂无数据',
       toneVar: 'var(--lz-primary-600)',
     },
@@ -124,6 +136,7 @@ const kpis = computed<Kpi[]>(() => {
       key: 'drawdown',
       label: '最大回撤',
       value: formatCents(t.maxDrawdown, { withSymbol: true }),
+      cents: t.maxDrawdown,
       // 回撤 0 = 全程没跌破过前高，这比写「无」更明确
       sub: t.maxDrawdown > 0 && t.peak ? `自 ${monthLabel(parseMonth(t.peak.month))} 高点回落` : '区间内未出现回撤',
       toneVar: t.maxDrawdown > 0 ? toneColorVar(settings.toneFor('expense')) : NEUTRAL_VAR,
@@ -186,7 +199,10 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
       >
         <span class="kpi-label">{{ kpi.label }}</span>
         <NSkeleton v-if="loading" text width="60%" :height="32" />
-        <span v-else class="kpi-value">{{ kpi.value }}</span>
+        <span v-else class="kpi-value">
+          <AnimatedMoney v-if="kpi.cents != null" :cents="kpi.cents" :with-sign="kpi.withSign ?? false" />
+          <template v-else>{{ kpi.value }}</template>
+        </span>
         <span v-if="!loading" class="kpi-sub">{{ kpi.sub }}</span>
       </div>
 
