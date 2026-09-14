@@ -44,3 +44,11 @@ _tmp_*
 *.gif
 *.webp
 *.bmp
+
+# 但 public/ 下的站点资源（favicon/logo/pwa/扫码图等）必须入库，否则部署 404
+!public/**/*.png
+!public/**/*.jpg
+!public/**/*.jpeg
+!public/**/*.gif
+!public/**/*.webp
+!public/**/*.bmp
