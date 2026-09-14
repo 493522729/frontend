@@ -2,8 +2,11 @@
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown, useMessage } from 'naive-ui'
 /**
- * 顶栏：侧边栏折叠开关 + 账本切换器 + 主题切换 + 用户菜单
- * Cmd/Ctrl+B 切换侧边栏（架构文档 4.2，已迁到 useHotkey 统一注册）
+ * 顶栏：侧边栏折叠开关 + 账本切换器 + 数据大屏入口 + 记账快捷键提示
+ *      + 主题切换 + 用户菜单
+ *
+ * Cmd/Ctrl+B 切换侧边栏、Cmd/Ctrl+K 唤起记账（都由 useHotkey 统一注册，
+ * 见 composables/useHotkey.ts；这里只负责把键位「显式地告诉用户」）。
  *
  * 用户菜单用 NDropdown 触发：显示昵称 + 退出登录 + 跳到设置（改密入口）。
  * 退出登录清 token + 跳 /login（带 redirect 让登录后回到原页面）。
@@ -11,16 +14,27 @@ import { NDropdown, useMessage } from 'naive-ui'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHotkey } from '@/composables/useHotkey'
+import { iconPath } from '@/constants/icons'
 import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
+import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import BookSwitcher from './BookSwitcher.vue'
 
 const appStore = useAppStore()
 const auth = useAuthStore()
+const quickEntry = useQuickEntryStore()
 const router = useRouter()
 const message = useMessage()
 
 useHotkey('Cmd+B', () => appStore.toggleSidebar())
+
+/** 图标路径：与侧边栏 route.meta.icon 同一份字典（constants/icons.ts） */
+const SCREEN_ICON = iconPath('screen')
+
+/** 进可视化大屏（blank layout 全屏沉浸，退出走 Esc / 大屏内按钮） */
+function goScreen() {
+  router.push('/screen')
+}
 
 /** 顶栏头像：取昵称首字，无头像时显示首字占位 */
 const avatarText = computed(() => {
@@ -81,6 +95,34 @@ async function onUserMenuSelect(key: string | number) {
     </div>
 
     <div class="header-right">
+      <!-- 可视化大屏入口（US-014）：图标 + 文字，跳全屏沉浸大屏 -->
+      <button
+        type="button"
+        class="screen-entry"
+        title="打开数据大屏"
+        @click="goScreen"
+      >
+        <svg class="icon-svg screen-entry__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path :d="SCREEN_ICON" fill="currentColor" />
+        </svg>
+        <span class="entry-text">数据大屏</span>
+      </button>
+
+      <!-- 记一笔：把 ⌘K 这条主路径显式摆到顶栏，点击同样能唤起（不止是提示） -->
+      <button
+        type="button"
+        class="hotkey-hint"
+        title="快速记账（⌘K 或 N）"
+        aria-label="快速记账，快捷键 Command 加 K"
+        @click="quickEntry.open()"
+      >
+        <kbd class="hotkey-hint__key">⌘</kbd>
+        <kbd class="hotkey-hint__key">K</kbd>
+        <span class="entry-text">记一笔</span>
+      </button>
+
+      <span class="header-divider" aria-hidden="true" />
+
       <button
         class="icon-btn"
         :aria-label="appStore.isDark ? '切换到亮色模式' : '切换到暗色模式'"
@@ -176,6 +218,129 @@ async function onUserMenuSelect(key: string | number) {
   &:focus-visible {
     outline: 2px solid var(--lz-primary-600);
     outline-offset: 2px;
+  }
+}
+
+// 顶栏按钮的共享文字样式：窄屏统一隐藏，只留图标 / 键位
+.entry-text {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+// 数据大屏入口：沿用 user-chip 的形状语言（36px 高、8px 圆角、1px 描边），
+// 靠「图标用主色」把它和普通图标按钮区分开 —— 不额外加底色，避免顶栏花
+.screen-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--lz-border-light);
+  border-radius: var(--lz-radius-lg);
+  background: var(--lz-bg-card);
+  color: var(--lz-text-regular);
+  cursor: pointer;
+  @include transition-paint();
+
+  &:hover {
+    border-color: var(--lz-primary-500);
+    background: var(--lz-primary-50);
+    color: var(--lz-primary-600);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--lz-primary-600);
+    outline-offset: 2px;
+  }
+}
+
+.screen-entry__icon {
+  width: 18px;
+  height: 18px;
+  color: var(--lz-primary-600);
+  flex-shrink: 0;
+}
+
+// 「记一笔」快捷键提示：本质是提示，所以不加描边、用次要色，
+// 不跟右侧主题/用户按钮抢视觉；但它同时是可点入口，所以保留完整交互态
+.hotkey-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--lz-radius-lg);
+  background: transparent;
+  color: var(--lz-text-secondary);
+  cursor: pointer;
+  @include transition-paint();
+
+  .entry-text {
+    margin-left: 2px;
+  }
+
+  &:hover {
+    background: var(--lz-primary-50);
+    color: var(--lz-primary-600);
+
+    .hotkey-hint__key {
+      border-color: var(--lz-primary-300);
+      color: var(--lz-primary-600);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--lz-primary-600);
+    outline-offset: 2px;
+  }
+}
+
+// 键位胶囊：等宽字体 + 下边多 1px 模拟键帽厚度
+.hotkey-hint__key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--lz-border);
+  border-bottom-width: 2px;
+  border-radius: var(--lz-radius-sm);
+  background: var(--lz-bg-page);
+  color: var(--lz-text-regular);
+  font-family: var(--lz-font-num);
+  font-size: 11px;
+  line-height: 1;
+  @include transition-paint();
+}
+
+// 新增入口与原有控件之间的分隔，避免右侧五个元素糊成一片
+.header-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--lz-border);
+}
+
+// 窄屏：先收「记一笔」文字，再收「数据大屏」文字，键位与图标保留
+@media (max-width: 1100px) {
+  .hotkey-hint .entry-text {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .screen-entry .entry-text {
+    display: none;
+  }
+
+  .screen-entry {
+    padding: 0 8px;
+  }
+
+  .header-divider {
+    display: none;
   }
 }
 

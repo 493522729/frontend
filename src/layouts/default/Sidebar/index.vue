@@ -2,6 +2,7 @@
 import { useRoute } from 'vue-router'
 import { useBelowLg } from '@/composables/useBelowLg'
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from '@/constants/app'
+import { iconPath } from '@/constants/icons'
 import { useAppStore } from '@/stores/modules/app'
 
 /**
@@ -17,41 +18,8 @@ const router = useRouter()
 const belowLg = useBelowLg()
 const collapsed = computed(() => appStore.sidebarCollapsed || belowLg.value)
 
-// 菜单图标映射：key 来自 route.meta.icon，值为内联 SVG 路径
+// 菜单图标映射来自 constants/icons.ts（与顶栏共用同一份 path 字典）
 // 不依赖 @iconify-json/mdi，避免当前 pnpm 信任策略阻塞
-const iconMap: Record<string, string> = {
-  dashboard: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z',
-  list: 'M3 5h4v4H3zM10 5h11v4H10zM3 11h4v4H3zM10 11h11v4H10zM3 17h4v4H3zM10 17h11v4H10z',
-  tags: 'M21.4 11.6l-9-9a2 2 0 0 0-1.4-.6H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .6 1.4l9 9a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z',
-  books: 'M4 4h6v16H4zM14 4h6v16h-6z',
-  wallet: 'M3 7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1H5.5A2.5 2.5 0 0 0 3 10.5zM3 10.5V17a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4h-4.5a2.5 2.5 0 0 1 0-5H21V7a2 2 0 0 0-2-2h-3a2 2 0 0 0-2 2v.5A1.5 1.5 0 0 1 12.5 9h-8A1.5 1.5 0 0 1 3 7.5z',
-  // 资产趋势：上扬折线 + 箭头（Material 风格实心路径，菜单 svg 是 fill 渲染）
-  trending: 'M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z',
-  // 预算：小旗（目标/限额的通用隐喻）
-  flag: 'M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z',
-  // 报表中心：柱状图卡（Material 实心路径）
-  chart: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z',
-  // 导入对账：上箭头 + 基线（上传隐喻）
-  upload: 'M12 3l-7 7h4v8h6v-8h4z',
-  // 周期账单：日历（方格里一个圆点表示待办）
-  calendar: 'M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 15H5V9h14zM8 11h3v3H8zm5 0h3v3h-3z',
-  // 规则引擎：魔法棒（自动化的通用隐喻）
-  wand: 'M7.5 5.6 5 7 6.4 4.5 5 2 7.5 3.4 10 2 8.6 4.5 10 7Zm12 12L17 20l1.4-2.5L17 15l2.5 1.4L22 15l-1.4 2.5L22 20Zm-5.7-3.7-7-7 1.4-1.4 7 7Z',
-  settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2-.4a7 7 0 0 0-.6-1.4l1-1.7-1.4-1.4-1.7 1a7 7 0 0 0-1.4-.6L14 3h-2l-.4 2a7 7 0 0 0-1.4.6l-1.7-1-1.4 1.4 1 1.7a7 7 0 0 0-.6 1.4L3 12v2l2 .4a7 7 0 0 0 .6 1.4l-1 1.7 1.4 1.4 1.7-1a7 7 0 0 0 1.4.6L10 21h2l.4-2a7 7 0 0 0 1.4-.6l1.7 1 1.4-1.4-1-1.7a7 7 0 0 0 .6-1.4L21 14z',
-  // 可视化大屏：显示器 + 底座（Material 实心路径）
-  screen: 'M21 2H3a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8v2H8v2h8v-2h-3v-2h8a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zm-1 14H4V4h16z',
-  // 账号设置：人物轮廓
-  user: 'M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v1h20v-1c0-3.33-6.67-5-10-5z',
-}
-
-// 找不到映射时回退到「圆点」默认图标，绝不能把原始 key 当 path 回吐（否则 <path d="list"> 非法）
-const FALLBACK_ICON = 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z'
-
-function iconPath(icon?: string): string {
-  if (!icon)
-    return FALLBACK_ICON
-  return iconMap[icon] ?? FALLBACK_ICON
-}
 
 // 过滤 hidden、按 order 排序 —— 菜单数据只有一个来源：路由表
 const menus = computed(() => {
@@ -70,17 +38,7 @@ const menus = computed(() => {
     <!-- Logo 区 -->
     <div class="sidebar-logo" :title="$route.meta.title">
       <span class="logo-icon">
-        <svg class="logo-svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="side-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#94c4ea" />
-              <stop offset="1" stop-color="#3b87ce" />
-            </linearGradient>
-          </defs>
-          <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#side-grad)" />
-          <path d="M8 22 L13 15 L18 18.5 L24 10" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-          <circle cx="24" cy="10" r="2.4" fill="#fff" />
-        </svg>
+        <img src="/logo.png" alt="简账" class="logo-img">
       </span>
       <Transition name="fade">
         <span v-if="!collapsed" class="logo-text">简账</span>
@@ -135,15 +93,14 @@ const menus = computed(() => {
     place-items: center;
     width: 32px;
     height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--lz-primary-400), var(--lz-primary-600));
-    color: #fff;
     flex-shrink: 0;
   }
 
-  .logo-svg {
-    width: 20px;
-    height: 20px;
+  .logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
   }
 
   .logo-text {
