@@ -10,6 +10,7 @@
  */
 import { computed, onMounted } from 'vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
+import FlowRail from '@/components/business/flow-rail/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { formatCents } from '@/utils/money'
@@ -55,28 +56,36 @@ function openQuickEntry(): void {
   <div class="dashboard">
     <header class="dash-header">
       <div class="dash-heading">
+        <span class="page-eyebrow">{{ monthText }} · 本月收支</span>
         <h1 class="page-title">
-          {{ monthText }} · 仪表盘
+          仪表盘
         </h1>
         <p class="page-subtitle">
-          本月收支、分类占比与近半年趋势
+          收支结构、分类占比与近半年趋势
         </p>
       </div>
 
-      <!-- 资产净值：所有账户余额合计（PRD 8.1） -->
-      <div class="net-assets-group">
-        <div class="net-assets">
+      <!--
+        资产净值：所有账户余额合计（PRD 8.1）
+        刻意不做成两个带边框的盒子 —— 灰色描边的小卡片会和下面四张数据卡
+        抢同一层视觉，反而把「最重要的存量数字」压低了。这里改成纯排版：
+        一条竖分隔线划分「当前账本」与「跨账本合计」，靠字号和颜色分主次。
+      -->
+      <div class="net-block">
+        <div class="net-item net-item--primary">
           <span class="net-label">资产净值</span>
-          <NSkeleton v-if="loading" text width="120px" :height="26" />
-          <span v-else class="net-value">
+          <NSkeleton v-if="loading" text width="120px" :height="30" />
+          <span v-else class="net-value net-value--primary">
             {{ currentBookNetAssets == null ? '—' : formatCents(currentBookNetAssets, { withSymbol: true }) }}
           </span>
         </div>
 
+        <span class="net-divider" aria-hidden="true" />
+
         <!-- 总资产净值：跨账本合计，切账本不变化，方便对账 -->
-        <div class="net-assets">
+        <div class="net-item">
           <span class="net-label">总资产净值</span>
-          <NSkeleton v-if="loading" text width="120px" :height="26" />
+          <NSkeleton v-if="loading" text width="110px" :height="22" />
           <span v-else class="net-value">
             {{ totalNetAssets == null ? '—' : formatCents(totalNetAssets, { withSymbol: true }) }}
           </span>
@@ -119,12 +128,27 @@ function openQuickEntry(): void {
       />
     </section>
 
+    <!--
+      收支结构带：四张卡只给了绝对额，看不出收入与支出的力量对比。
+      这条轨把「比例」这层信息补上，充当四张卡与下方图表之间的过渡。
+    -->
+    <section class="flow-band" aria-label="本月收支结构">
+      <FlowRail
+        :income="overview?.income ?? 0"
+        :expense="overview?.expense ?? 0"
+        caption="本月收支结构"
+      />
+    </section>
+
     <!-- 环图 + 折线 -->
     <section class="chart-grid" aria-label="收支结构">
       <div class="chart-card">
-        <h2 class="chart-title">
-          支出分类占比
-        </h2>
+        <div class="chart-head">
+          <h2 class="chart-title">
+            支出分类占比
+          </h2>
+          <span class="chart-sub">Top 6 + 其他</span>
+        </div>
 
         <NSkeleton v-if="loading" class="chart-skeleton" height="300px" />
 
@@ -145,9 +169,13 @@ function openQuickEntry(): void {
       </div>
 
       <div class="chart-card">
-        <h2 class="chart-title">
-          近 6 月收支趋势
-        </h2>
+        <div class="chart-head">
+          <h2 class="chart-title">
+            近 6 月收支趋势
+          </h2>
+          <!-- 图例只说了两条线的名字，这条虚线得单独交代一句 -->
+          <span class="chart-sub">虚线为月均支出</span>
+        </div>
         <NSkeleton v-if="loading" class="chart-skeleton" height="300px" />
         <TrendLine v-else :points="overview?.trend ?? []" />
       </div>
@@ -165,8 +193,18 @@ function openQuickEntry(): void {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 24px;
   margin-bottom: 20px;
+}
+
+// eyebrow：把「哪个月」这层上下文放在标题之上，标题就不必再兼职报月份
+.page-eyebrow {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lz-text-secondary);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
 }
 
 .page-title {
@@ -182,35 +220,47 @@ function openQuickEntry(): void {
   margin: 0;
 }
 
-.net-assets-group {
+// 资产区：没有卡片外壳，靠竖分隔线 + 字号差建立主次
+.net-block {
   display: flex;
-  gap: 12px;
+  align-items: stretch;
+  gap: 20px;
   flex-shrink: 0;
+  padding-top: 2px;
 }
 
-.net-assets {
+.net-item {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  padding: 10px 18px;
-  background: var(--lz-bg-card);
-  border: 1px solid var(--lz-border);
-  border-radius: var(--lz-radius-xl);
-  box-shadow: var(--lz-shadow-sm);
-  flex-shrink: 0;
+}
+
+.net-divider {
+  width: 1px;
+  background: var(--lz-border);
 }
 
 .net-label {
   font-size: 12px;
   color: var(--lz-text-secondary);
+  letter-spacing: 0.02em;
 }
 
 .net-value {
-  font-size: 20px;
+  @include tabular;
+
+  font-size: 18px;
   font-weight: 600;
   color: var(--lz-text-primary);
-  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+// 当前账本的净值才是主角，跨账本合计是参考值
+.net-value--primary {
+  font-size: 26px;
+  letter-spacing: -0.025em;
 }
 
 .net-sub {
@@ -223,12 +273,22 @@ function openQuickEntry(): void {
   margin-bottom: 16px;
 }
 
-// 4 卡：< 992px 变 2×2（PRD 8.1 响应式规格）
+// 4 卡：< 1200px 变 2×2（等宽数字比无衬线宽，断点比原来的 992 提前一档）
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
+}
+
+// 收支结构带：与数据卡同样式的外壳，保持一致的语言
+.flow-band {
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  background: var(--lz-bg-card);
+  border: 1px solid var(--lz-border);
+  border-radius: var(--lz-radius-xl);
+  box-shadow: var(--lz-shadow-sm);
 }
 
 // 环图窄、折线宽：折线要放 6 个月的 x 轴，需要更长的横向空间
@@ -247,43 +307,42 @@ function openQuickEntry(): void {
   min-width: 0; // grid 子项不设会撑破容器
 }
 
+// 图表卡头部：标题 + 口径说明（Top 6 + 其他 / 虚线含义）
+.chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
 .chart-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--lz-text-primary);
-  margin: 0 0 8px;
+  margin: 0;
+}
+
+.chart-sub {
+  font-size: 12px;
+  color: var(--lz-text-secondary);
+  flex-shrink: 0;
 }
 
 .chart-skeleton {
   border-radius: var(--lz-radius-lg);
 }
 
-.chart-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  height: 300px;
-}
-
-.empty-icon {
-  font-size: 40px;
-  opacity: 0.6;
-}
-
-.empty-text {
-  font-size: 13px;
-  color: var(--lz-text-secondary);
-  margin: 0;
-}
-
-// ── 响应式：< 992px 卡片 2×2、图表上下排 ──────────────
-@media (max-width: 991px) {
+// ── 响应式 ────────────────────────────────────────────────
+// 等宽数字占了更多横向空间，四卡并排在 1200px 以下会挤到省略号，提前收成 2×2
+@media (max-width: 1199px) {
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
+// < 992px：图表上下排，资产区改左对齐
+@media (max-width: 991px) {
   .chart-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -291,9 +350,14 @@ function openQuickEntry(): void {
   .dash-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 16px;
   }
 
-  .net-assets {
+  .net-block {
+    gap: 16px;
+  }
+
+  .net-item {
     align-items: flex-start;
   }
 }
@@ -303,10 +367,18 @@ function openQuickEntry(): void {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  // 两张资产卡在窄屏下纵向堆叠，避免横向被挤到换行
-  .net-assets-group {
+  // 资产区在窄屏下纵向堆叠，右侧竖分隔线换成横向留白
+  .net-block {
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+  }
+
+  .net-divider {
+    display: none;
+  }
+
+  .net-value--primary {
+    font-size: 24px;
   }
 }
 </style>

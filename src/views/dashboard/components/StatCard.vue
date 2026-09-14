@@ -2,7 +2,18 @@
 /**
  * 仪表盘数据卡（PRD 8.1）
  * ====================================================================
- * 规格：数字 28px、千分位、收入绿 / 支出红、环比箭头 + 百分比。
+ * 规格：数字 26px 等宽（`--lz-font-num`）、千分位、收入绿 / 支出红、
+ * 环比胶囊 + 箭头。
+ *
+ * 三个刻意的选择：
+ *  1. 主数字用**等宽字体**而不是无衬线 + tabular-nums —— 财务感的来源。
+ *     JetBrains Mono 的字符宽度一致，金额位数变化时整块数字不会「呼吸」，
+ *     四张卡并排时小数点也能对齐。
+ *  2. 卡片顶部一条**语义色渐隐条**：把「这张卡的身份」编码进表面，
+ *     扫一眼就知道哪张是收入哪张是支出，不必读标签。
+ *     渐隐到右侧透明是为了避免一条实线把顶栏切得太硬。
+ *  3. 环比做成**胶囊**而不是裸文字：环比是「辅助结论」，
+ *     用底色和主数字拉开层级，四张卡的视觉重心才会落在金额上。
  *
  * 环比的颜色是「语义驱动」而不是「方向驱动」—— 这点很容易做错：
  *   收入涨 = 好事（绿）；支出涨 = 坏事（红）
@@ -63,8 +74,20 @@ const logicalTone = computed<('income' | 'expense' | 'neutral')>(() => {
   return 'neutral'
 })
 
-/** 主数值颜色：随「金额配色偏好」翻转 */
-const toneClass = computed(() => `tone-${settings.toneFor(logicalTone.value)}`)
+/** 语义色调（success / danger / neutral）—— 随「金额配色偏好」翻转 */
+const semanticTone = computed(() => settings.toneFor(logicalTone.value))
+
+/** 顶部渐隐条 / 主数字的颜色（token 变量名，明暗主题自动跟随） */
+const toneColor = computed(() => settings.toneColor(semanticTone.value))
+const toneColorBg = computed(() => settings.toneColorBg(semanticTone.value))
+
+/** 传给 CSS 的自定义属性：避免在样式里再判断一次 tone */
+const cardStyle = computed(() => ({
+  '--card-tone': toneColor.value,
+  '--card-tone-bg': toneColorBg.value,
+}))
+
+const valueClass = computed(() => `tone-${semanticTone.value}`)
 
 const hasMom = computed(() => props.mom != null)
 
@@ -88,24 +111,36 @@ const momText = computed(() => {
  * 环比颜色：按「涨跌对我是好是坏」判断，不随收入红/绿偏好翻转
  * （「好」永远用 success 色，与收支配色是两回事）
  */
-const momClass = computed(() => {
+const momTone = computed(() => {
   const m = props.mom
   if (m == null || m === 0)
-    return 'tone-neutral'
+    return 'neutral'
   const isUp = m > 0
   const isGood = props.momGoodWhen === 'up' ? isUp : !isUp
-  return isGood ? 'tone-success' : 'tone-danger'
+  return isGood ? 'success' : 'danger'
 })
+
+const momStyle = computed(() => (momTone.value === 'neutral'
+  ? {}
+  : {
+      color: settings.toneColor(momTone.value),
+      background: settings.toneColorBg(momTone.value),
+    }))
 </script>
 
 <template>
-  <div class="stat-card">
+  <div class="stat-card" :style="cardStyle">
     <span class="stat-label">{{ label }}</span>
 
-    <NSkeleton v-if="loading" text width="60%" :height="34" />
-    <span v-else class="stat-value" :class="toneClass">{{ displayValue }}</span>
+    <NSkeleton v-if="loading" text width="60%" :height="32" />
+    <span v-else class="stat-value" :class="valueClass">{{ displayValue }}</span>
 
-    <div v-if="hasMom && !loading" class="stat-mom" :class="momClass">
+    <div
+      v-if="hasMom && !loading"
+      class="stat-mom"
+      :class="`mom-${momTone}`"
+      :style="momStyle"
+    >
       <span class="mom-arrow" aria-hidden="true">{{ momArrow }}</span>
       <span class="mom-value">{{ momText }}</span>
       <span class="mom-hint">较上月</span>
@@ -118,15 +153,26 @@ const momClass = computed(() => {
 
 <style scoped lang="scss">
 .stat-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 20px 24px;
+  gap: 4px;
+  padding: 16px 18px 14px;
   background: var(--lz-bg-card);
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
   box-shadow: var(--lz-shadow-sm);
-  transition: box-shadow var(--lz-duration-base) var(--lz-ease-standard);
+  overflow: hidden; // 顶条贴圆角，不溢出
+  @include transition-paint();
+
+  // 语义色顶条：卡片身份的编码（收 / 支 / 结余），渐隐避免切得太硬
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(90deg, var(--card-tone) 0%, transparent 72%);
+  }
 
   &:hover {
     box-shadow: var(--lz-shadow-md);
@@ -134,17 +180,28 @@ const momClass = computed(() => {
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--lz-text-secondary);
+  letter-spacing: 0.02em;
 }
 
 // 等宽数字：金额位数变化时不错位（架构文档 3.2）
+// 26px 是架构 3.2「等宽档光学补偿」那一档：JetBrains Mono 同字号比 Inter 宽约
+// 8%，按 text-2xl 的 24px 画出来视觉上会比 24px 无衬线小一档，所以补偿到 26px，
+// 全站所有「主金额」都用这一档，不各自微调。
 .stat-value {
-  font-size: 28px;
+  @include tabular;
+
+  font-size: 26px;
   font-weight: 600;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
   color: var(--lz-text-primary);
+  // 极窄容器下宁可缩小也不折行 —— 金额被折成两行是最难看的
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   &.tone-success {
     color: var(--lz-success);
@@ -159,35 +216,54 @@ const momClass = computed(() => {
   }
 }
 
+// 环比胶囊：比主数字弱一层，但又必须能被扫到
 .stat-mom {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   gap: 4px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: var(--lz-radius-full);
+  font-size: 12px;
+  line-height: 18px;
+  @include tabular;
 
-  &.tone-success {
+  &.mom-success {
     color: var(--lz-success);
+    background: var(--lz-success-bg);
   }
 
-  &.tone-danger {
+  &.mom-danger {
     color: var(--lz-danger);
+    background: var(--lz-danger-bg);
   }
 
-  &.tone-neutral {
+  &.mom-neutral {
     color: var(--lz-text-secondary);
+    background: var(--lz-bg-page);
   }
 }
 
 .stat-mom--loading {
-  min-height: 20px;
+  background: transparent;
+  padding: 0;
+  min-height: 22px;
 }
 
 .mom-arrow {
   font-size: 12px;
 }
 
+// 「较上月」是胶囊里最不重要的一截，压暗半档，让百分比先被读到
 .mom-hint {
-  color: var(--lz-text-secondary);
+  opacity: 0.75;
+}
+
+// 四卡并排需要 ~185px/卡的可用宽度，1200px 以下改 2×2 更稳（PRD 8.1 响应式规格）
+@media (max-width: 1199px) {
+  .stat-value {
+    font-size: 24px;
+  }
 }
 </style>
