@@ -11,7 +11,10 @@ import {
 } from '@/api/modules/category'
 import { countCategoryUsage, reassignCategory } from '@/api/modules/transaction'
 import EmptyState from '@/components/business/empty-state/index.vue'
+import TwemojiIcon from '@/components/business/twemoji-icon/index.vue'
 import { useDictStore } from '@/stores/modules/dict'
+import { useSettingsStore } from '@/stores/modules/settings'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
 /**
  * 分类管理页（Now 清单 #1，PRD §15.2.1）
@@ -27,7 +30,13 @@ import { useDictStore } from '@/stores/modules/dict'
  */
 
 const dict = useDictStore()
+const settings = useSettingsStore()
 const message = useMessage()
+
+// 分组色点跟随「系统设置 → 金额配色偏好」：用户切成 A 股红收时，
+// 这里的支出/收入色点会跟着翻转，不再和金额颜色打架
+const expenseDotColor = computed(() => settings.typeColor('expense'))
+const incomeDotColor = computed(() => settings.typeColor('income'))
 
 const categories = computed<Category[]>(() => dict.categories)
 
@@ -38,7 +47,37 @@ function childrenOf(parentId: number): Category[] {
 }
 
 // ── 图标 / 颜色 快捷候选（降低输入成本，也保证视觉统一） ──────────
-const ICON_CANDIDATES = ['🍜', '🚇', '🛍️', '🏠', '🎮', '💊', '📚', '📱', '💼', '🎁', '📈', '💻', '✈️', '🐱', '☕', '🍺', '🏥', '🎓', '💡', '🎵']
+/**
+ * 图标候选分 3 组，每组 20 个（弹层里正好铺满两行，10 列 × 2 行）。
+ * 默认展示第 1 组，底部「换一批」在组间循环 —— 候选项太多会显得杂，
+ * 分组后既保持弹层高度稳定，又能覆盖更多场景（餐饮/交通/数码/收入/理财…）。
+ */
+const ICON_GROUPS: string[][] = [
+  // 组 1：日常高频（新建时的默认图标 📦 / 💰 也在这组，保证打开就能看到选中态）
+  ['📦', '💰', '🍜', '🚇', '🛍️', '🏠', '🎮', '💊', '📚', '📱', '💼', '🎁', '☕', '🍺', '🏥', '🎓', '💡', '🎵', '✈️', '🐱'],
+  // 组 2：生活开销（吃喝、出行、穿搭、水电、娱乐）
+  ['🍚', '🍔', '🍰', '🚌', '🚗', '⛽', '👕', '👟', '💄', '🧴', '🛒', '🏨', '🚿', '⚡', '📶', '🧹', '🐶', '🎬', '🎤', '🎨'],
+  // 组 3：收入与资产（工资、奖金、理财、账户、工具）
+  ['💵', '💳', '🏦', '🏧', '🧧', '🏆', '🎯', '⏰', '📝', '🔧', '🧰', '🌐', '🚀', '💖', '🌟', '🔒', '🧾', '🥇', '📈', '💻'],
+]
+/** 当前展示的图标组下标 */
+const iconGroupIndex = ref(0)
+/** 当前组的图标（索引访问可能是 undefined，这里收窄成确定的数组，模板少一层判断） */
+const iconGroup = computed(() => ICON_GROUPS[iconGroupIndex.value] ?? ICON_GROUPS[0]!)
+/** 组下标列表（给底部分组圆点用，避免模板里出现未使用的 v-for 变量） */
+const iconGroupIndexes = ICON_GROUPS.map((_, i) => i)
+
+/** 换一批：循环切到下一组（最后一组之后回到第 1 组） */
+function nextIconGroup() {
+  iconGroupIndex.value = (iconGroupIndex.value + 1) % ICON_GROUPS.length
+}
+
+/** 打开弹层时定位到「当前图标所在的那组」，否则用户会看不到自己选中的图标 */
+function focusIconGroup(icon: string) {
+  const idx = ICON_GROUPS.findIndex(group => group.includes(icon))
+  iconGroupIndex.value = idx < 0 ? 0 : idx
+}
+
 const COLOR_CANDIDATES = ['#FF7A6B', '#5BA9FF', '#FF9F45', '#A78BFA', '#3CC6BC', '#F87171', '#60A5FA', '#818CF8', '#22C55E', '#0EA5E9', '#84CC16', '#94A3B8']
 
 // ── 表单弹层 ─────────────────────────────────────────────
@@ -78,7 +117,7 @@ function isDescendant(nodeId: number, ancestorId: number): boolean {
   return false
 }
 
-const parentOptions = computed(() => parentCandidates().map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })))
+const parentOptions = computed(() => parentCandidates().map(c => emojiOption(c.icon, c.name, c.id)))
 
 /** 当前编辑项是否已有子分类：有子项时不能把它改成二级，否则子项会变为三级，UI 目前只支持两级 */
 const editingHasChildren = computed(() => editingId.value != null && childrenOf(editingId.value).length > 0)
@@ -90,6 +129,7 @@ function openCreate(type: Category['type']) {
   form.icon = type === 'expense' ? '📦' : '💰'
   form.color = type === 'expense' ? '#5BA9FF' : '#22C55E'
   form.parentId = null
+  focusIconGroup(form.icon)
   formVisible.value = true
 }
 
@@ -100,6 +140,7 @@ function openEdit(cat: Category) {
   form.icon = cat.icon
   form.color = cat.color
   form.parentId = cat.parentId
+  focusIconGroup(cat.icon)
   formVisible.value = true
 }
 
@@ -140,7 +181,7 @@ const migrationOptions = computed(() => {
     return []
   return categories.value
     .filter(c => c.type === targetDeleting.value!.type && c.id !== targetDeleting.value!.id)
-    .map(c => ({ label: `${c.icon} ${c.name}`, value: c.id }))
+    .map(c => emojiOption(c.icon, c.name, c.id))
 })
 
 async function openDelete(cat: Category) {
@@ -272,7 +313,7 @@ watch(() => form.type, () => {
       <!-- 支出 -->
       <section class="cat-group" title="拖动分类行可调整顺序，排序会自动保存">
         <div class="group-head">
-          <span class="group-title"><span class="dot dot-expense" /> 支出分类</span>
+          <span class="group-title"><span class="dot" :style="{ background: expenseDotColor }" /> 支出分类</span>
           <NButton size="small" tertiary type="primary" @click="openCreate('expense')">
             + 新增
           </NButton>
@@ -308,7 +349,9 @@ watch(() => form.type, () => {
               @dragend="onDragEnd"
             >
               <span class="child-connector" />
-              <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22`, color: child.color }">{{ child.icon }}</span>
+              <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
+                <TwemojiIcon :emoji="child.icon" :size="18" />
+              </span>
               <span class="cat-name">{{ child.name }}</span>
               <span class="cat-actions">
                 <NButton size="tiny" quaternary @click="openEdit(child)">编辑</NButton>
@@ -334,7 +377,7 @@ watch(() => form.type, () => {
       <!-- 收入 -->
       <section class="cat-group" title="拖动分类行可调整顺序，排序会自动保存">
         <div class="group-head">
-          <span class="group-title"><span class="dot dot-income" /> 收入分类</span>
+          <span class="group-title"><span class="dot" :style="{ background: incomeDotColor }" /> 收入分类</span>
           <NButton size="small" tertiary type="primary" @click="openCreate('income')">
             + 新增
           </NButton>
@@ -370,7 +413,9 @@ watch(() => form.type, () => {
               @dragend="onDragEnd"
             >
               <span class="child-connector" />
-              <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22`, color: child.color }">{{ child.icon }}</span>
+              <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
+                <TwemojiIcon :emoji="child.icon" :size="18" />
+              </span>
               <span class="cat-name">{{ child.name }}</span>
               <span class="cat-actions">
                 <NButton size="tiny" quaternary @click="openEdit(child)">编辑</NButton>
@@ -421,23 +466,49 @@ watch(() => form.type, () => {
         <NSelect
           v-model:value="form.parentId"
           :options="parentOptions"
+          :render-label="renderEmojiLabel"
           placeholder="不选择则为一级分类"
           :disabled="editingHasChildren"
           clearable
         />
 
-        <label class="form-label">图标</label>
-        <div class="icon-grid">
+        <div class="icon-head">
+          <span class="form-label">图标</span>
+          <span class="icon-current" title="当前选中的图标">
+            已选 <TwemojiIcon :emoji="form.icon" :size="15" />
+          </span>
+        </div>
+        <!-- key 绑组号：切组时整块重建，触发一次淡入位移动画（时长走 token，开了减弱动效自动关掉） -->
+        <div :key="iconGroupIndex" class="icon-grid">
           <button
-            v-for="ic in ICON_CANDIDATES"
+            v-for="ic in iconGroup"
             :key="ic"
             type="button"
             class="icon-cell"
             :class="{ active: form.icon === ic }"
+            :aria-label="`图标 ${ic}`"
+            :aria-pressed="form.icon === ic"
             @click="form.icon = ic"
           >
-            {{ ic }}
+            <TwemojiIcon :emoji="ic" :size="18" />
           </button>
+        </div>
+        <div class="icon-foot">
+          <span class="icon-dots">
+            <button
+              v-for="i in iconGroupIndexes"
+              :key="i"
+              type="button"
+              class="icon-dot"
+              :class="{ active: i === iconGroupIndex }"
+              :aria-label="`第 ${i + 1} 组图标`"
+              :aria-current="i === iconGroupIndex ? 'true' : undefined"
+              @click="iconGroupIndex = i"
+            />
+          </span>
+          <NButton size="tiny" tertiary type="primary" @click="nextIconGroup">
+            换一批
+          </NButton>
         </div>
 
         <label class="form-label">颜色</label>
@@ -480,6 +551,7 @@ watch(() => form.type, () => {
             <NSelect
               v-model:value="migrationTarget"
               :options="migrationOptions"
+              :render-label="renderEmojiLabel"
               placeholder="选择交易迁移到哪个分类"
               class="migration-select"
             />
@@ -568,18 +640,11 @@ watch(() => form.type, () => {
   color: var(--lz-text-primary);
 }
 
+// 色值走 settings.typeColor（内联 style 绑定），这里只管形状
 .dot {
   width: 10px;
   height: 10px;
   border-radius: var(--lz-radius-full);
-}
-
-.dot-expense {
-  background: var(--lz-danger);
-}
-
-.dot-income {
-  background: var(--lz-success);
 }
 
 .cat-list {
@@ -708,30 +773,92 @@ watch(() => form.type, () => {
   margin-left: 6px;
 }
 
-.icon-grid {
+// ── 图标选择器 ─────────────────────────────────────────
+.icon-head {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.icon-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--lz-text-secondary);
+}
+
+// 10 列 × 2 行：每组 20 个固定铺满两行，切组时高度不跳
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 6px;
+  animation: icon-grid-in var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+@keyframes icon-grid-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .icon-cell {
-  width: 34px;
-  height: 34px;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1 / 1;
+  padding: 0;
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-md);
   background: var(--lz-bg-card);
-  font-size: 16px;
   cursor: pointer;
   @include transition-paint();
 
   &:hover {
     border-color: var(--lz-primary-300);
+    background: var(--lz-bg-hover);
   }
 
   &.active {
     border-color: var(--lz-primary-600);
     background: var(--lz-primary-50);
     box-shadow: 0 0 0 2px var(--lz-primary-100);
+  }
+}
+
+.icon-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.icon-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--lz-radius-full);
+  background: var(--lz-border);
+  cursor: pointer;
+  @include transition-paint();
+
+  &.active {
+    width: 16px;
+    background: var(--lz-primary-500);
   }
 }
 
