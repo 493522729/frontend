@@ -14,6 +14,7 @@
  * 口径统一放在 api 层，报表页将来复用时才不会算出另一套数字。
  */
 
+import type { AmountTone } from '@/stores/modules/settings'
 import type { NetWorthTrend } from '@/types/stats'
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -57,17 +58,32 @@ function percentText(v: number): string {
 }
 
 /**
+ * 中性色卡用正文色而不是 info 蓝
+ *
+ * 语义色的 neutral 档（--lz-info）是给「转账」这类有明确中性语义的场景用的；
+ * 「当前净资产」「最高月」只是没有涨跌倾向，不是要强调「中性」，
+ * 染成蓝色会让人以为这一栏有额外含义。所以中性一律退回正文色。
+ */
+const NEUTRAL_VAR = 'var(--lz-text-primary)'
+
+function toneColorVar(tone: AmountTone): string {
+  return tone === 'neutral' ? NEUTRAL_VAR : settings.toneColor(tone)
+}
+
+/**
  * 4 张指标卡
  *
  * tone 走 settings.toneFor：尊重用户在设置页选的「收入红 / 绿」偏好，
  * 不在这一页 hardcode 颜色（否则设置页的开关对本页失效）。
+ * toneVar 只是把色调换成卡片要用的 CSS 变量名，判定逻辑仍只有 toneFor 一份。
  */
 interface Kpi {
   key: string
   label: string
   value: string
   sub: string
-  toneClass: string
+  /** 卡片顶部色条与主数字的颜色（CSS 变量名） */
+  toneVar: string
 }
 
 const kpis = computed<Kpi[]>(() => {
@@ -87,21 +103,22 @@ const kpis = computed<Kpi[]>(() => {
       label: '当前净资产',
       value: formatCents(t.endNetAssets, { withSymbol: true }),
       sub: `区间起点 ${formatCents(t.startNetAssets, { withSymbol: true })}`,
-      toneClass: 'tone-neutral',
+      // 存量数字没有正负倾向，用品牌主色做色条 —— 它是这一页的主角
+      toneVar: 'var(--lz-primary-600)',
     },
     {
       key: 'change',
       label: `近 ${months.value} 个月净增`,
       value: signed(t.change),
       sub: `${percentText(t.changePercent)} · 区间累计`,
-      toneClass: `tone-${changeTone}`,
+      toneVar: toneColorVar(changeTone),
     },
     {
       key: 'peak',
       label: '净资产最高月',
       value: t.peak ? monthLabel(parseMonth(t.peak.month)) : '—',
       sub: t.peak ? formatCents(t.peak.netAssets, { withSymbol: true }) : '暂无数据',
-      toneClass: 'tone-neutral',
+      toneVar: 'var(--lz-primary-600)',
     },
     {
       key: 'drawdown',
@@ -109,9 +126,25 @@ const kpis = computed<Kpi[]>(() => {
       value: formatCents(t.maxDrawdown, { withSymbol: true }),
       // 回撤 0 = 全程没跌破过前高，这比写「无」更明确
       sub: t.maxDrawdown > 0 && t.peak ? `自 ${monthLabel(parseMonth(t.peak.month))} 高点回落` : '区间内未出现回撤',
-      toneClass: t.maxDrawdown > 0 ? `tone-${settings.toneFor('expense')}` : 'tone-neutral',
+      toneVar: t.maxDrawdown > 0 ? toneColorVar(settings.toneFor('expense')) : NEUTRAL_VAR,
     },
   ]
+})
+
+/**
+ * 顶部 eyebrow：把「区间多长、覆盖到哪个月」这层上下文放在标题之上
+ *
+ * 标题下面那行副标题已经承担了「哪个账本 + 这一页看什么」，
+ * 再塞日期会让两行的信息密度都不够；日期区间本来就是「限定条件」，
+ * 放 eyebrow 更符合它的语义层级。
+ */
+const rangeText = computed(() => {
+  const base = `近 ${months.value} 个月`
+  if (!points.value.length)
+    return base
+  const first = points.value[0]!.month
+  const last = points.value[points.value.length - 1]!.month
+  return `${base} · ${monthLabel(parseMonth(first))} — ${monthLabel(parseMonth(last))}`
 })
 
 /** 空态：账户都没建，曲线也没意义（引导去账户页，而不是在这儿记一笔） */
@@ -122,6 +155,7 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   <div class="asset-page">
     <header class="page-header">
       <div class="heading">
+        <span class="page-eyebrow">{{ rangeText }}</span>
         <h1 class="page-title">
           资产趋势
         </h1>
@@ -131,21 +165,28 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
       </div>
 
       <!-- 区间切换：改它等于改变请求参数，取数在 composable 里 watch -->
-      <NRadioGroup v-model:value="months" size="small">
-        <NRadioButton v-for="opt in rangeOptions" :key="opt.value" :value="opt.value">
-          {{ opt.label }}
-        </NRadioButton>
-      </NRadioGroup>
+      <div class="range-switch">
+        <NRadioGroup v-model:value="months" size="small">
+          <NRadioButton v-for="opt in rangeOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </NRadioButton>
+        </NRadioGroup>
+      </div>
     </header>
 
     <NAlert v-if="error" type="error" :title="error" class="page-error" closable />
 
     <!-- 指标卡 -->
     <section class="kpi-grid" aria-label="资产概览">
-      <div v-for="kpi in kpis" :key="kpi.key" class="kpi-card">
+      <div
+        v-for="kpi in kpis"
+        :key="kpi.key"
+        class="kpi-card"
+        :style="{ '--card-tone': kpi.toneVar }"
+      >
         <span class="kpi-label">{{ kpi.label }}</span>
         <NSkeleton v-if="loading" text width="60%" :height="32" />
-        <span v-else class="kpi-value" :class="kpi.toneClass">{{ kpi.value }}</span>
+        <span v-else class="kpi-value">{{ kpi.value }}</span>
         <span v-if="!loading" class="kpi-sub">{{ kpi.sub }}</span>
       </div>
 
@@ -161,9 +202,12 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
 
     <!-- 净值曲线 -->
     <section class="card">
-      <h2 class="card-title">
-        净资产走势
-      </h2>
+      <div class="chart-head">
+        <h2 class="card-title">
+          净资产走势
+        </h2>
+        <span class="chart-sub">总资产 / 负债可在图例关闭</span>
+      </div>
       <NSkeleton v-if="loading" class="chart-skeleton" height="320px" />
       <NetWorthLine v-else :points="points" />
     </section>
@@ -171,17 +215,23 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
     <!-- 月度净增 + 账户构成 -->
     <section class="chart-grid">
       <div class="card">
-        <h2 class="card-title">
-          月度净增
-        </h2>
+        <div class="chart-head">
+          <h2 class="card-title">
+            月度净增
+          </h2>
+          <span class="chart-sub">向上攒钱 · 向下净流出</span>
+        </div>
         <NSkeleton v-if="loading" class="chart-skeleton" height="280px" />
         <MonthlyChangeBar v-else :points="points" />
       </div>
 
       <div class="card">
-        <h2 class="card-title">
-          账户构成
-        </h2>
+        <div class="chart-head">
+          <h2 class="card-title">
+            账户构成
+          </h2>
+          <span class="chart-sub">向左为欠款</span>
+        </div>
         <NSkeleton v-if="loading" class="chart-skeleton" height="280px" />
         <EmptyState
           v-else-if="isEmpty"
@@ -214,6 +264,16 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   margin-bottom: 20px;
 }
 
+// eyebrow：把「区间多长、覆盖到哪月」放在标题之上，标题就不必再兼职报区间
+.page-eyebrow {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lz-text-secondary);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
 .page-title {
   font-size: 20px;
   font-weight: 600;
@@ -225,6 +285,12 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   font-size: 13px;
   color: var(--lz-text-secondary);
   margin: 0;
+}
+
+// 区间切换贴住右侧顶部：它是「限定条件」，不需要和标题抢垂直空间
+.range-switch {
+  flex-shrink: 0;
+  padding-top: 2px;
 }
 
 .page-error {
@@ -239,6 +305,8 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
 }
 
 .kpi-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -248,6 +316,26 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   border-radius: var(--lz-radius-xl);
   box-shadow: var(--lz-shadow-sm);
   min-width: 0;
+  @include transition-paint();
+
+  &:hover {
+    box-shadow: var(--lz-shadow-md);
+  }
+
+  /**
+   * 顶部语义色渐隐条
+   *
+   * 四张卡并排时长得一模一样，扫视时没有抓手。一条 2px 的色条向右淡出，
+   * 既标出这张卡的语义（净增的涨 / 回撤的亏），又不会像整块色带那样压过数字。
+   * 颜色由模板传下来的 --card-tone 决定，与设置页的金额配色同源。
+   */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(90deg, var(--card-tone) 0%, transparent 72%);
+  }
 }
 
 .kpi-label {
@@ -256,23 +344,17 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
 }
 
 .kpi-value {
+  @include tabular;
+
   font-size: 26px;
   font-weight: 600;
   line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  color: var(--lz-text-primary);
-
-  &.tone-success {
-    color: var(--lz-success);
-  }
-
-  &.tone-danger {
-    color: var(--lz-danger);
-  }
-
-  &.tone-neutral {
-    color: var(--lz-text-primary);
-  }
+  letter-spacing: -0.02em;
+  // 等宽数字比无衬线宽约 8%，窄卡里「最大回撤」这类金额容易被挤到换行
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--card-tone, var(--lz-text-primary));
 }
 
 .kpi-sub {
@@ -290,11 +372,26 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   min-width: 0;
 }
 
+// 图表卡头部：标题 + 口径说明（图例已经交代了序列名，这里补的是读法）
+.chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
 .card-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--lz-text-primary);
-  margin: 0 0 8px;
+  margin: 0;
+}
+
+.chart-sub {
+  font-size: 12px;
+  color: var(--lz-text-secondary);
+  flex-shrink: 0;
 }
 
 .chart-grid {
@@ -307,27 +404,8 @@ const isEmpty = computed(() => !loading.value && account.accounts.length === 0)
   border-radius: var(--lz-radius-lg);
 }
 
-.card-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  height: 280px;
-}
-
-.empty-icon {
-  font-size: 40px;
-  opacity: 0.6;
-}
-
-.empty-text {
-  font-size: 13px;
-  color: var(--lz-text-secondary);
-  margin: 0;
-}
-
 // ── 响应式 ───────────────────────────────────────────────
+// 等宽数字更占宽度，四卡并排在 1200px 以下会挤到省略号，提前收成 2×2
 @media (max-width: 1199px) {
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

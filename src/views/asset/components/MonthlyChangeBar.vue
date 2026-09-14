@@ -15,7 +15,7 @@ import type { NetWorthPoint } from '@/types/stats'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { axisMoneyLabel, ensureECharts, tooltipStyle } from '@/utils/echarts'
+import { axisMoneyLabel, ensureECharts, tooltipStyle, withAlpha } from '@/utils/echarts'
 import { formatCents } from '@/utils/money'
 import { monthLabel, parseMonth } from '@/utils/temporal'
 
@@ -24,6 +24,29 @@ const props = defineProps<{
 }>()
 
 ensureECharts()
+
+/**
+ * 柱体渐变：正柱向上长、负柱向下长，两者的「根部」都在 0 轴上
+ *
+ * ECharts 的渐变坐标系（global: false）绑的是**每根柱子自己的 bbox**，
+ * y=0 是柱顶、y=1 是柱底。正柱的柱顶就是尖端，所以尖端浓、根部淡；
+ * 负柱正好相反 —— 它的柱顶贴在 0 轴上、柱底才是尖端，所以要把渐变翻过来，
+ * 否则会出现「所有柱子的浓端都朝上」，负柱看着像被截断了一截。
+ */
+function barFill(color: string, positive: boolean) {
+  const [near, far] = positive ? [1, 0.66] : [0.66, 1]
+  return {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: withAlpha(color, near) },
+      { offset: 1, color: withAlpha(color, far) },
+    ],
+  }
+}
 
 type BarOption = ComposeOption<BarSeriesOption | TooltipComponentOption | GridComponentOption>
 
@@ -35,6 +58,8 @@ const option = computed<BarOption>(() => {
     tooltip: {
       trigger: 'axis',
       ...tooltipStyle(p),
+      // 柱状图用 shadow 指示器：整列底色变深，比一条细线更容易对上「哪个月」
+      axisPointer: { type: 'shadow', shadowStyle: { color: withAlpha(p.border, 0.4) } },
       formatter: (raw: unknown) => {
         const items = raw as { name: string, value: number, marker?: string }[]
         const first = items[0]
@@ -52,29 +77,39 @@ const option = computed<BarOption>(() => {
     xAxis: {
       type: 'category',
       data: props.points.map(pt => `${Number(pt.month.slice(5))}月`),
-      axisLine: { lineStyle: { color: p.border } },
+      axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: p.textSecondary, fontSize: 12 },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: p.border, type: 'dashed' } },
+      splitLine: { lineStyle: { color: withAlpha(p.border, 0.7) } },
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisTick: { show: false },
       axisLabel: { color: p.textSecondary, fontSize: 12, formatter: axisMoneyLabel },
     },
     series: [
       {
         name: '月度净增',
         type: 'bar',
-        barMaxWidth: 26,
-        // 圆角只给上方：柱子从 0 轴长出，底部圆角会脱离基线显得浮空
-        itemStyle: {
-          borderRadius: [4, 4, 0, 0],
-          // 回调参数用宽类型接：echarts 的 CallbackDataParams.value 可能是
-          // 字符串 / 日期 / null（业务上不会，但类型是这么声明的），收窄成 number 会编译不过
-          color: (params: { value?: unknown }) =>
-            Number(params.value ?? 0) >= 0 ? p.income : p.expense,
-        },
-        data: props.points.map(pt => pt.netChange),
+        barMaxWidth: 22,
+        /**
+         * 逐柱给 itemStyle：把「正负异色」和「圆角朝哪」一起定下来
+         *
+         * 之所以不用 itemStyle.color 回调 —— 回调只能返回颜色，圆角仍是
+         * series 级的一份配置；而正柱要 [6,6,0,0]（顶部圆角）、负柱要
+         * [0,0,6,6]（底部圆角），写死任一个方向都会有一半柱子的圆角长在
+         * 贴着 0 轴的那一端，看着像悬浮。逐项给 data 才分得开。
+         */
+        data: props.points.map(pt => ({
+          value: pt.netChange,
+          itemStyle: {
+            color: barFill(pt.netChange >= 0 ? p.income : p.expense, pt.netChange >= 0),
+            borderRadius: pt.netChange >= 0 ? [6, 6, 0, 0] : [0, 0, 6, 6],
+          },
+        })),
+        emphasis: { focus: 'series' },
       },
     ],
   }

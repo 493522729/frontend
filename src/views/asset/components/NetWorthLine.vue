@@ -18,7 +18,7 @@ import type { NetWorthPoint } from '@/types/stats'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { axisMoneyLabel, ensureECharts, tooltipStyle } from '@/utils/echarts'
+import { areaFade, axisMoneyLabel, ensureECharts, tooltipStyle, withAlpha } from '@/utils/echarts'
 import { formatCents } from '@/utils/money'
 import { monthLabel, parseMonth } from '@/utils/temporal'
 
@@ -54,8 +54,11 @@ const option = computed<LineOption>(() => {
     legend: {
       top: 0,
       right: 0,
-      itemWidth: 14,
-      itemHeight: 8,
+      // roundRect 比默认的圆点/矩形更贴这一版的圆角语言
+      icon: 'roundRect',
+      itemWidth: 12,
+      itemHeight: 4,
+      itemGap: 14,
       textStyle: { color: p.textSecondary, fontSize: 12 },
     },
     grid: { left: 4, right: 12, top: 36, bottom: 0, containLabel: true },
@@ -63,13 +66,19 @@ const option = computed<LineOption>(() => {
       type: 'category',
       boundaryGap: false,
       data: props.points.map(pt => `${Number(pt.month.slice(5))}月`),
-      axisLine: { lineStyle: { color: p.border } },
+      // 轴线与刻度都去掉：底部那根横线不承载任何信息，
+      // 只会在视觉上把图表「钉」成一个方框，少了它整张图更轻
+      axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: p.textSecondary, fontSize: 12 },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: p.border, type: 'dashed' } },
+      // 实线淡网格比虚线干净：虚线在 4 条分割线下会显得碎
+      splitLine: { lineStyle: { color: withAlpha(p.border, 0.7) } },
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisTick: { show: false },
       axisLabel: { color: p.textSecondary, fontSize: 12, formatter: axisMoneyLabel },
     },
     series: [
@@ -77,23 +86,14 @@ const option = computed<LineOption>(() => {
         name: '净资产',
         type: 'line',
         smooth: true,
+        // 常态不画点（12~24 个月全是点会连成一条虚线），hover 时才显形
+        showSymbol: false,
         symbol: 'circle',
-        symbolSize: 6,
+        symbolSize: 7,
         lineStyle: { width: 2.5, color: p.primary },
-        itemStyle: { color: p.primary },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: `${p.primary}44` },
-              { offset: 1, color: `${p.primary}05` },
-            ],
-          },
-        },
+        itemStyle: { color: p.primary, borderColor: p.card, borderWidth: 2 },
+        emphasis: { scale: 1.4 },
+        areaStyle: { color: areaFade(p.primary, 0.18) },
         data: props.points.map(pt => pt.netAssets),
       },
       {

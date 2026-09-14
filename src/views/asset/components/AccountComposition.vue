@@ -17,7 +17,7 @@ import type { AccountWithBalance } from '@/types/transaction'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { axisMoneyLabel, ensureECharts, tooltipStyle } from '@/utils/echarts'
+import { axisMoneyLabel, ensureECharts, tooltipStyle, withAlpha } from '@/utils/echarts'
 import { formatCents } from '@/utils/money'
 
 const props = defineProps<{
@@ -25,6 +25,29 @@ const props = defineProps<{
 }>()
 
 ensureECharts()
+
+/**
+ * 横向柱体的填充渐变
+ *
+ * 横条的「根部」也在 0 轴上：正余额朝右长（尖端在右）、欠款朝左长（尖端在左），
+ * 所以渐变方向要按符号分别给 —— 与 MonthlyChangeBar 的 barFill 同理，
+ * 只是坐标系转了 90°（x=0 是左端、x=1 是右端）。
+ * 统一让「尖端浓、贴 0 轴的根部淡」，视觉上才是钱从零线往外长出去。
+ */
+function barFill(color: string, positive: boolean) {
+  const [from, to] = positive ? [0.62, 1] : [1, 0.62]
+  return {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 1,
+    y2: 0,
+    colorStops: [
+      { offset: 0, color: withAlpha(color, from) },
+      { offset: 1, color: withAlpha(color, to) },
+    ],
+  }
+}
 
 type BarOption = ComposeOption<BarSeriesOption | TooltipComponentOption | GridComponentOption>
 
@@ -66,10 +89,14 @@ const option = computed<BarOption>(() => {
         return lines.join('<br/>')
       },
     },
-    grid: { left: 4, right: 16, top: 8, bottom: 0, containLabel: true },
+    grid: { left: 4, right: 24, top: 8, bottom: 0, containLabel: true },
     xAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: p.border, type: 'dashed' } },
+      // 横向条形靠竖向网格判断量级，这条网格不能省（与折线/柱状不同）
+      splitLine: { lineStyle: { color: withAlpha(p.border, 0.7) } },
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisTick: { show: false },
       axisLabel: { color: p.textSecondary, fontSize: 12, formatter: axisMoneyLabel },
     },
     yAxis: {
@@ -77,28 +104,39 @@ const option = computed<BarOption>(() => {
       data: rows.value.map(a => `${a.icon}  ${a.name}`),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: p.textSecondary, fontSize: 12 },
+      // 账户名可能是「招商银行储蓄卡（6225）」这种长名字，超 8 字截断 ——
+      // 精确名字在 tooltip 里有，轴标签只要能认出是哪个账户
+      axisLabel: {
+        color: p.textSecondary,
+        fontSize: 12,
+        formatter: (name: string) => (name.length > 10 ? `${name.slice(0, 10)}…` : name),
+      },
     },
     series: [
       {
         name: '账户余额',
         type: 'bar',
-        barMaxWidth: 18,
-        itemStyle: {
-          borderRadius: 4,
-          color: (params: { value?: unknown }) =>
-            Number(params.value ?? 0) >= 0 ? p.income : p.expense,
-        },
+        barMaxWidth: 14,
+        // 逐项给样式：颜色（正负异色）、渐变方向、圆角朝向、标签位置四件事
+        // 都跟符号绑定，series 级的单一 itemStyle 表达不了
+        data: rows.value.map(a => ({
+          value: a.balance,
+          itemStyle: {
+            color: barFill(a.balance >= 0 ? p.income : p.expense, a.balance >= 0),
+            // 尖端那一侧给圆角，贴 0 轴的一侧保持方角
+            borderRadius: a.balance >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
+          },
+          // 正余额标在柱子右端、欠款标在左端（柱子朝左），都朝外不会压住柱子
+          label: { position: a.balance >= 0 ? 'right' : 'left' },
+        })),
         label: {
           show: true,
-          // 正余额标在柱子右端、欠款标在左端（柱子朝左），都朝外不会压住柱子
-          position: 'right',
           fontSize: 12,
           color: p.textSecondary,
           formatter: (params: { value?: unknown }) =>
             formatCents(Number(params.value ?? 0), { withSymbol: true }),
         },
-        data: rows.value.map(a => a.balance),
+        emphasis: { focus: 'series' },
       },
     ],
   }
