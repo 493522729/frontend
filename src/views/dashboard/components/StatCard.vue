@@ -22,6 +22,7 @@
  */
 import { NSkeleton } from 'naive-ui'
 import { computed } from 'vue'
+import AnimatedMoney from '@/components/base/animated-money/index.vue'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { formatCents } from '@/utils/money'
 
@@ -133,7 +134,11 @@ const momStyle = computed(() => (momTone.value === 'neutral'
     <span class="stat-label">{{ label }}</span>
 
     <NSkeleton v-if="loading" text width="60%" :height="32" />
-    <span v-else class="stat-value" :class="valueClass">{{ displayValue }}</span>
+    <span v-else class="stat-value" :class="valueClass">
+      <!-- 金额卡走滚动动画（记一笔后数字「落」到新值），文本卡（如环比%）保持静态 -->
+      <AnimatedMoney v-if="props.value != null" :cents="props.value" />
+      <template v-else>{{ displayValue }}</template>
+    </span>
 
     <div
       v-if="hasMom && !loading"
