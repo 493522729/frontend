@@ -19,13 +19,16 @@ import { NButton, NDataTable, NRadioButton, NRadioGroup, NSelect, NTag, useMessa
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { bucketRange } from '@/api/modules/report'
 import { listTransactions } from '@/api/modules/transaction'
+import EmojiText from '@/components/business/emoji-text/index.vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
+import FlowRail from '@/components/business/flow-rail/index.vue'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { downloadCsv, safeFilePart } from '@/utils/csv'
 import { formatCents } from '@/utils/money'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 import ReportBar from './components/ReportBar.vue'
 import ReportLine from './components/ReportLine.vue'
 import ReportPie from './components/ReportPie.vue'
@@ -58,16 +61,33 @@ onMounted(() => {
 })
 
 const categoryOptions = computed(() =>
-  dict.categories.map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
+  dict.categories.map(c => emojiOption(c.icon, c.name, c.id)),
 )
 
 const accountOptions = computed(() =>
-  account.accounts.map(a => ({ label: `${a.icon} ${a.name}`, value: a.id })),
+  account.accounts.map(a => emojiOption(a.icon, a.name, a.id)),
 )
 
-/** 汇总数（筛选后的区间合计）；手动带 +/- 号：汇总条上「收入 ¥x / 支出 ¥y」比裸数字更可读 */
-const incomeText = computed(() => `+${formatCents(result.value?.income ?? 0, { withSymbol: true })}`)
-const expenseText = computed(() => `-${formatCents(result.value?.expense ?? 0, { withSymbol: true })}`)
+/**
+ * 区间净额（收入 − 支出）：汇总带的主数字。
+ *
+ * 比原来那行「收入 +¥x 支出 -¥y 笔数 n」三个平铺文本强的地方在于
+ * 净额是**推导结论**，而收入/支出是**构成** —— 结论该有更大的字号，
+ * 构成交给下面的收支结构轨去表达比例关系。带 withSign 是为了让
+ * 颜色之外还有符号编码（架构 3.1：颜色永远不是唯一编码）。
+ */
+const netCents = computed(() => (result.value?.income ?? 0) - (result.value?.expense ?? 0))
+
+const netTone = computed(() => settings.toneFor(
+  netCents.value > 0 ? 'income' : netCents.value < 0 ? 'expense' : 'neutral',
+))
+
+const netText = computed(() => formatCents(netCents.value, { withSymbol: true, withSign: true }))
+
+/** 当前粒度的中文标签，给图表卡标题做「口径提示」 */
+const granularityLabel = computed(() =>
+  GRANULARITY_OPTIONS.find(g => g.value === granularity.value)?.label ?? '按时间',
+)
 
 // ── 图表切换 ─────────────────────────────────────────────
 type ChartKind = 'bar' | 'line' | 'pie'
@@ -179,19 +199,19 @@ const drillColumns = computed<DataTableColumns<Transaction>>(() => [
   {
     title: '分类',
     key: 'categoryId',
-    width: 130,
+    width: 150,
     render: (row) => {
       const c = categoryMap.value.get(row.categoryId)
-      return `${c?.icon ?? '📦'} ${c?.name ?? '未分类'}`
+      return h(EmojiText, { icon: c?.icon, text: c?.name ?? '未分类', size: 16 })
     },
   },
   {
     title: '账户',
     key: 'accountId',
-    width: 140,
+    width: 160,
     render: (row) => {
       const a = accountMap.value.get(row.accountId)
-      return `${a?.icon ?? '·'} ${a?.name ?? '-'}`
+      return h(EmojiText, { icon: a?.icon, text: a?.name ?? '-', size: 16 })
     },
   },
   {
@@ -242,32 +262,43 @@ function exportCsv(): void {
     <NAlert v-if="error" type="error" :title="error" class="page-error" closable />
 
     <!-- 多维筛选条 -->
-    <section class="filter-card">
-      <div class="filter-row">
+    <section class="lz-filter-bar report-filter-bar">
+      <div class="lz-filter-group">
+        <span class="lz-filter-label">粒度</span>
         <NRadioGroup v-model:value="granularity" size="small">
           <NRadioButton v-for="g in GRANULARITY_OPTIONS" :key="g.value" :value="g.value">
             {{ g.label }}
           </NRadioButton>
         </NRadioGroup>
+      </div>
 
-        <div class="filter-dates">
-          <NDatePicker
-            v-model:formatted-value="start"
-            type="date"
-            value-format="yyyy-MM-dd"
-            :clearable="false"
-            size="small"
-          />
-          <span class="date-sep">~</span>
-          <NDatePicker
-            v-model:formatted-value="end"
-            type="date"
-            value-format="yyyy-MM-dd"
-            :clearable="false"
-            size="small"
-          />
-        </div>
+      <div class="lz-filter-divider" />
 
+      <div class="lz-filter-group">
+        <span class="lz-filter-label">时间</span>
+        <NDatePicker
+          v-model:formatted-value="start"
+          type="date"
+          value-format="yyyy-MM-dd"
+          :clearable="false"
+          size="small"
+          style="width: 130px"
+        />
+        <span class="lz-filter-sep">~</span>
+        <NDatePicker
+          v-model:formatted-value="end"
+          type="date"
+          value-format="yyyy-MM-dd"
+          :clearable="false"
+          size="small"
+          style="width: 130px"
+        />
+      </div>
+
+      <div class="lz-filter-divider" />
+
+      <div class="lz-filter-group">
+        <span class="lz-filter-label">类型</span>
         <NRadioGroup v-model:value="flowType" size="small">
           <NRadioButton value="both">
             全部
@@ -281,7 +312,9 @@ function exportCsv(): void {
         </NRadioGroup>
       </div>
 
-      <div class="filter-row">
+      <div class="lz-filter-divider" />
+
+      <div class="lz-filter-group report-filter-dimensions">
         <NSelect
           v-model:value="categoryIds"
           multiple
@@ -289,8 +322,10 @@ function exportCsv(): void {
           size="small"
           placeholder="全部分类"
           :options="categoryOptions"
+          :render-label="renderEmojiLabel"
           max-tag-count="responsive"
-          class="filter-select"
+          :input-props="{ 'aria-label': '分类筛选' }"
+          style="width: 180px"
         />
         <NSelect
           v-model:value="accountIds"
@@ -299,36 +334,59 @@ function exportCsv(): void {
           size="small"
           placeholder="全部账户"
           :options="accountOptions"
+          :render-label="renderEmojiLabel"
           max-tag-count="responsive"
-          class="filter-select"
+          :input-props="{ 'aria-label': '账户筛选' }"
+          style="width: 180px"
         />
       </div>
     </section>
 
-    <!-- 汇总条 -->
-    <section class="summary-row" aria-label="区间汇总">
-      <span class="summary-item">收入 <b class="tone-income">{{ incomeText }}</b></span>
-      <span class="summary-item">支出 <b class="tone-expense">{{ expenseText }}</b></span>
-      <span class="summary-item">笔数 <b>{{ result?.count ?? 0 }}</b></span>
+    <!-- 区间汇总：净额（结论）+ 收支结构轨（构成），与仪表盘共用同一个组件 -->
+    <section class="summary-band" aria-label="区间汇总">
+      <div class="summary-net">
+        <span class="summary-label">
+          区间净额
+        </span>
+        <b class="summary-value" :style="{ color: settings.toneColor(netTone) }">{{ netText }}</b>
+        <span class="summary-meta">共 {{ result?.count ?? 0 }} 笔</span>
+      </div>
+
+      <!-- 收支结构轨：与仪表盘共用同一个组件（比例这层信息原来完全缺失） -->
+      <FlowRail
+        :income="result?.income ?? 0"
+        :expense="result?.expense ?? 0"
+        show-values
+        caption="区间收支结构"
+      />
     </section>
 
     <!-- 图表区：柱 / 折线 / 饼 切换 -->
     <section class="card">
       <div class="chart-head">
-        <NRadioGroup v-model:value="chartKind" size="small">
-          <NRadioButton value="bar">
-            柱状
-          </NRadioButton>
-          <NRadioButton value="line">
-            折线
-          </NRadioButton>
-          <NRadioButton value="pie">
-            饼图
-          </NRadioButton>
-        </NRadioGroup>
-        <NButton size="small" quaternary @click="exportCsv">
-          导出 CSV
-        </NButton>
+        <!-- 标题带上当前口径（粒度 + 区间）：这里最容易「看到的图和以为的筛选不一致」 -->
+        <div class="chart-head-main">
+          <h2 class="card-title">
+            收支走势
+          </h2>
+          <span class="chart-head-sub">{{ granularityLabel }} · {{ start }} ~ {{ end }}</span>
+        </div>
+        <div class="chart-head-actions">
+          <NRadioGroup v-model:value="chartKind" size="small">
+            <NRadioButton value="bar">
+              柱状
+            </NRadioButton>
+            <NRadioButton value="line">
+              折线
+            </NRadioButton>
+            <NRadioButton value="pie">
+              饼图
+            </NRadioButton>
+          </NRadioGroup>
+          <NButton size="small" quaternary @click="exportCsv">
+            导出 CSV
+          </NButton>
+        </div>
       </div>
 
       <NSkeleton v-if="loading" class="chart-skeleton" height="340px" />
@@ -336,6 +394,7 @@ function exportCsv(): void {
         v-else-if="!result || result.count === 0"
         variant="chart"
         size="sm"
+        source="twemoji"
         title="当前筛选条件下没有收支数据"
         desc="换个时间范围或分类试试"
       />
@@ -407,61 +466,61 @@ function exportCsv(): void {
 }
 
 // ── 筛选条 ───────────────────────────────────────────────
-.filter-card {
-  padding: 14px 18px;
+.report-filter-bar {
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.report-filter-dimensions {
+  margin-left: auto;
+}
+
+// ── 区间汇总带 ───────────────────────────────────────────
+// 左「结论」（净额）右「构成」（收支结构轨），中间一条竖线划分。
+// 原来的三行小字把结论和构成摆在同一条水平线上，谁都不是重点。
+.summary-band {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
   background: var(--lz-bg-card);
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
   box-shadow: var(--lz-shadow-sm);
+}
+
+.summary-net {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 2px;
+  padding-right: 24px;
+  border-right: 1px solid var(--lz-border);
+  min-width: 0;
 }
 
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.filter-dates {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.date-sep {
+.summary-label {
+  font-size: 12px;
+  font-weight: 500;
   color: var(--lz-text-secondary);
+  letter-spacing: 0.02em;
 }
 
-.filter-select {
-  min-width: 220px;
-  flex: 1;
-  max-width: 420px;
+.summary-value {
+  @include tabular;
+
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  // 颜色由内联 style 给（走 settings.toneColor），这里只定字形
+  white-space: nowrap;
 }
 
-// ── 汇总条 ───────────────────────────────────────────────
-.summary-row {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 14px;
-  font-size: 13px;
+.summary-meta {
+  font-size: 12px;
   color: var(--lz-text-secondary);
-
-  b {
-    font-size: 16px;
-    font-variant-numeric: tabular-nums;
-  }
-}
-
-.tone-income {
-  color: var(--lz-success);
-}
-
-.tone-expense {
-  color: var(--lz-danger);
 }
 
 // ── 图表 / 明细卡 ────────────────────────────────────────
@@ -479,35 +538,37 @@ function exportCsv(): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.chart-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chart-head-sub {
+  @include tabular;
+
+  font-size: 12px;
+  color: var(--lz-text-secondary);
+}
+
+.chart-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .chart-skeleton {
   border-radius: var(--lz-radius-lg);
 }
 
-.chart-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  height: 300px;
-}
-
-.empty-icon {
-  font-size: 40px;
-  opacity: 0.6;
-}
-
-.empty-text {
-  font-size: 13px;
-  color: var(--lz-text-secondary);
-  margin: 0;
-}
-
 .chart-hint {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 12px;
   color: var(--lz-text-secondary);
   text-align: center;
@@ -537,14 +598,32 @@ function exportCsv(): void {
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 575px) {
-  .filter-row {
+@media (max-width: 860px) {
+  .report-filter-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: var(--lz-space-3);
   }
 
-  .filter-select {
-    max-width: none;
+  .report-filter-dimensions {
+    margin-left: 0;
+  }
+
+  .lz-filter-divider {
+    display: none;
+  }
+
+  // 汇总带在窄屏下改成上下排：净额在上、结构轨在下，竖线换成横线
+  .summary-band {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .summary-net {
+    padding-right: 0;
+    padding-bottom: 14px;
+    border-right: none;
+    border-bottom: 1px solid var(--lz-border);
   }
 }
 </style>

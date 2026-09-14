@@ -12,7 +12,7 @@ import type { ReportBucket } from '@/types/report'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { axisMoneyLabel, ensureECharts, tooltipStyle } from '@/utils/echarts'
+import { axisMoneyLabel, barFade, ensureECharts, tooltipStyle, withAlpha } from '@/utils/echarts'
 import { formatCents } from '@/utils/money'
 
 const props = defineProps<{
@@ -38,6 +38,8 @@ const option = computed<BarOption>(() => {
     tooltip: {
       trigger: 'axis',
       ...tooltipStyle(p),
+      // 柱图用「阴影指示」而不是竖线：竖线会从柱子的中间穿过去，看着像划痕
+      axisPointer: { type: 'shadow', shadowStyle: { color: withAlpha(p.border, 0.5) } },
       formatter: (raw: unknown) => {
         const items = raw as { name: string, seriesName: string, value: number, marker?: string }[]
         if (!items.length)
@@ -53,34 +55,43 @@ const option = computed<BarOption>(() => {
       right: 0,
       itemWidth: 14,
       itemHeight: 8,
+      itemGap: 16,
+      icon: 'roundRect',
       textStyle: { color: p.textSecondary, fontSize: 12 },
     },
-    grid: { left: 4, right: 12, top: 36, bottom: 0, containLabel: true },
+    grid: { left: 4, right: 12, top: 40, bottom: 0, containLabel: true },
     xAxis: {
       type: 'category',
       data: props.buckets.map(b => b.label),
-      axisLine: { lineStyle: { color: p.border } },
+      axisLine: { lineStyle: { color: withAlpha(p.border, 0.9) } },
       axisTick: { show: false },
-      axisLabel: { color: p.textSecondary, fontSize: 12 },
+      axisLabel: { color: p.textSecondary, fontSize: 12, margin: 12 },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: p.border, type: 'dashed' } },
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: withAlpha(p.border, 0.7) } },
       axisLabel: { color: p.textSecondary, fontSize: 12, formatter: axisMoneyLabel },
     },
     series: [
       {
         name: '收入',
         type: 'bar',
-        barMaxWidth: 22,
-        itemStyle: { color: p.income, borderRadius: [4, 4, 0, 0] },
+        barMaxWidth: 24,
+        barGap: '18%',
+        itemStyle: { color: barFade(p.income), borderRadius: [6, 6, 0, 0] },
+        // 双系列柱图里，hover 时把另一系列压暗，才看得清这一组的两根柱
+        emphasis: { focus: 'series' },
         data: props.buckets.map(b => b.income),
       },
       {
         name: '支出',
         type: 'bar',
-        barMaxWidth: 22,
-        itemStyle: { color: p.expense, borderRadius: [4, 4, 0, 0] },
+        barMaxWidth: 24,
+        itemStyle: { color: barFade(p.expense), borderRadius: [6, 6, 0, 0] },
+        emphasis: { focus: 'series' },
         data: props.buckets.map(b => b.expense),
       },
     ],

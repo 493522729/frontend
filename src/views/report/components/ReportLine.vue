@@ -13,7 +13,7 @@ import type { ReportBucket } from '@/types/report'
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useChartPalette } from '@/composables/useChartPalette'
-import { axisMoneyLabel, ensureECharts, tooltipStyle } from '@/utils/echarts'
+import { areaFade, axisMoneyLabel, ensureECharts, tooltipStyle, withAlpha } from '@/utils/echarts'
 import { formatCents } from '@/utils/money'
 
 const props = defineProps<{
@@ -38,6 +38,7 @@ const option = computed<LineOption>(() => {
     tooltip: {
       trigger: 'axis',
       ...tooltipStyle(p),
+      axisPointer: { type: 'line', lineStyle: { color: withAlpha(p.border, 0.9), type: 'dashed' } },
       formatter: (raw: unknown) => {
         const items = raw as { name: string, seriesName: string, value: number, marker?: string }[]
         if (!items.length)
@@ -53,43 +54,53 @@ const option = computed<LineOption>(() => {
       right: 0,
       itemWidth: 14,
       itemHeight: 8,
+      itemGap: 16,
+      icon: 'roundRect',
       textStyle: { color: p.textSecondary, fontSize: 12 },
     },
-    grid: { left: 4, right: 12, top: 36, bottom: 0, containLabel: true },
+    grid: { left: 4, right: 12, top: 40, bottom: 0, containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: props.buckets.map(b => b.label),
-      axisLine: { lineStyle: { color: p.border } },
+      axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: p.textSecondary, fontSize: 12 },
+      axisLabel: { color: p.textSecondary, fontSize: 12, margin: 14 },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: p.border, type: 'dashed' } },
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: withAlpha(p.border, 0.7) } },
       axisLabel: { color: p.textSecondary, fontSize: 12, formatter: axisMoneyLabel },
     },
     series: [
       {
         name: '收入',
         type: 'line',
-        smooth: true,
+        smooth: 0.35,
         symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { width: 2, color: p.income },
-        itemStyle: { color: p.income },
-        areaStyle: { color: p.income, opacity: 0.06 },
+        symbolSize: 7,
+        // 桶多了（按日/按周）会点出一排圆点把线打碎，hover 才浮出来
+        showSymbol: props.buckets.length <= 12,
+        lineStyle: { width: 2.5, color: p.income },
+        itemStyle: { color: p.income, borderColor: p.card, borderWidth: 2 },
+        areaStyle: { color: areaFade(p.income, 0.16) },
+        emphasis: { focus: 'series', scale: 1.4 },
         data: props.buckets.map(b => b.income),
       },
       {
         name: '支出',
         type: 'line',
-        smooth: true,
+        smooth: 0.35,
         symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { width: 2, color: p.expense },
-        itemStyle: { color: p.expense },
-        areaStyle: { color: p.expense, opacity: 0.06 },
+        symbolSize: 7,
+        showSymbol: props.buckets.length <= 12,
+        lineStyle: { width: 2.5, color: p.expense },
+        itemStyle: { color: p.expense, borderColor: p.card, borderWidth: 2 },
+        areaStyle: { color: areaFade(p.expense, 0.16) },
+        emphasis: { focus: 'series', scale: 1.4 },
         data: props.buckets.map(b => b.expense),
       },
     ],
