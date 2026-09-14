@@ -3,8 +3,9 @@
  * 统一空状态（PRD §15.2.3「空态插画」）
  * ====================================================================
  * 之前各页面空态是 emoji 硬编码（📊 🏦 🔍 📒），风格不统一、暗色下观感参差、也没有品牌感。
- * 这里收口成一套内联 SVG 插画 —— 不引第三方图片资源（零请求、零维护成本），
- * 颜色全部走 token，暗色模式自动跟随。
+ * 现在默认走 Twemoji CDN SVG：跨平台一致、财务产品里仍显专业，
+ * 且能直接渲染数据库里已存的任意 emoji（分类/账户图标）。
+ * 若某处想保留项目自绘线性插画，传 source="svg" 即可。
  *
  * 插画设计原则（三条，别破）：
  *  1. **几何化**：只用矩形/圆/直线，不画具象物体 —— 财务产品要克制，插画太可爱会削弱专业感
@@ -17,7 +18,10 @@
  *  - 中性轮廓 var(--lz-border)（分隔线、基线）
  */
 
-export type EmptyVariant = 'ledger' | 'search' | 'wallet' | 'rule' | 'recurring' | 'chart'
+import type { TwemojiName } from '@/components/business/twemoji-icon/index.vue'
+import TwemojiIcon from '@/components/business/twemoji-icon/index.vue'
+
+export type EmptyVariant = 'ledger' | 'search' | 'wallet' | 'rule' | 'recurring' | 'chart' | 'upload' | 'package' | 'inbox' | 'receipt'
 
 withDefaults(defineProps<{
   /** 插画类型 */
@@ -28,15 +32,45 @@ withDefaults(defineProps<{
   desc?: string
   /** sm = 图表/卡片内嵌（80px），md = 整页区块（112px） */
   size?: 'sm' | 'md'
+  /** 图标来源：twemoji = 统一 emoji 风格 SVG；svg = 项目自绘线性插画 */
+  source?: 'twemoji' | 'svg'
+  /** 显式指定 Twemoji 名（会覆盖 variant 的默认映射） */
+  twemoji?: TwemojiName
 }>(), {
   variant: 'ledger',
   size: 'md',
+  source: 'twemoji',
 })
+
+const VARIANT_TO_TWEMOJI: Record<EmptyVariant, TwemojiName> = {
+  ledger: 'ledger',
+  search: 'search',
+  wallet: 'bank',
+  rule: 'rule',
+  recurring: 'recurring',
+  chart: 'chart',
+  upload: 'upload',
+  package: 'package',
+  inbox: 'inbox',
+  receipt: 'receipt',
+}
 </script>
 
 <template>
   <div class="empty-state" :class="`empty-state--${size}`">
+    <!-- Twemoji 图标（默认） -->
+    <TwemojiIcon
+      v-if="source === 'twemoji'"
+      class="empty-art"
+      :name="twemoji ?? VARIANT_TO_TWEMOJI[variant]"
+      :size="size === 'sm' ? 72 : 96"
+      :alt="title"
+      draggable="false"
+    />
+
+    <!-- 项目自绘线性插画（保留作为备用风格） -->
     <svg
+      v-else
       class="empty-art"
       viewBox="0 0 120 120"
       fill="none"
@@ -146,14 +180,14 @@ withDefaults(defineProps<{
 }
 
 .empty-art {
-  width: 112px;
-  height: 112px;
-  margin-bottom: 8px;
+  width: 96px;
+  height: 96px;
+  margin-bottom: 12px;
 
   .empty-state--sm & {
-    width: 80px;
-    height: 80px;
-    margin-bottom: 4px;
+    width: 72px;
+    height: 72px;
+    margin-bottom: 8px;
   }
 }
 

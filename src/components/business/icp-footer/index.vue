@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 import { onMounted } from 'vue'
+import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 
 /**
  * 全局备案字号页脚

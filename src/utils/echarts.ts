@@ -18,7 +18,7 @@
  */
 
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { use } from 'echarts/core'
 import { LabelLayout } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -37,6 +37,9 @@ export function ensureECharts(): void {
     TooltipComponent,
     LegendComponent,
     GridComponent,
+    // 月均参考线：趋势图上一条虚线就能回答「这个月是不是花超了」，
+    // 比让用户自己心算 6 个月的平均值有用得多（体积 ~2KB gzip，可接受）
+    MarkLineComponent,
     // 饼图标签防重叠（分类多时不会叠成一坨）
     LabelLayout,
     CanvasRenderer,
@@ -78,10 +81,32 @@ export interface ChartPalette {
   card: string
 }
 
-export function readPalette(): ChartPalette {
+/**
+ * 把 `var(--lz-x)` 解析成当前主题下的真实色值
+ *
+ * canvas 读不到 CSS 变量，图表拿到必须是具体色值；而调用方（store）给的是
+ * token 变量名 —— 在这里做一次解析，色值真相源仍然只有 tokens.css 一份。
+ */
+function resolveVar(value: string | undefined, fallback: string): string {
+  if (!value)
+    return fallback
+  const name = /^var\((--[\w-]+)\)$/.exec(value.trim())?.[1]
+  return name ? readToken(name, fallback) : value
+}
+
+/**
+ * @param tone 收入 / 支出的语义色（可选）。
+ *   不传 = 默认「收入绿 · 支出红」；
+ *   传 `settings.typeColor('income')` / `typeColor('expense')` 就能让图表跟随
+ *   「系统设置 → 金额配色偏好」（A 股习惯时收入红、支出绿），
+ *   和页面上金额、类型标签用同一套语义 —— 偏好判定逻辑只在 store 里写一次。
+ * @param tone.income 收入色：`var(--lz-*)` 或直接给具体色值
+ * @param tone.expense 支出色：同上
+ */
+export function readPalette(tone: { income?: string, expense?: string } = {}): ChartPalette {
   return {
-    income: readToken('--lz-success', '#15803d'),
-    expense: readToken('--lz-danger', '#dc2626'),
+    income: resolveVar(tone.income, readToken('--lz-success', '#15803d')),
+    expense: resolveVar(tone.expense, readToken('--lz-danger', '#dc2626')),
     primary: readToken('--lz-primary-600', '#2a6bb4'),
     text: readToken('--lz-text-primary', '#1a2233'),
     textSecondary: readToken('--lz-text-secondary', '#64748b'),
@@ -95,15 +120,110 @@ export function readPalette(): ChartPalette {
  *
  * 每个图表各写一遍 backgroundColor / borderColor / textStyle 的结果是
  * 「某个图忘了跟暗色」，所以收口成一个工厂函数。
+ *
+ * extraCssText 那个空子是这里唯一能用 CSS 变量的地方：ECharts 把它
+ * 拼进 tooltip 容器的 inline style，而 inline style 里的 var() 会
+ * 沿 DOM 继承链解析 —— 于是阴影仍然只有 tokens.css 一个真相源，
+ * 暗色档自动跟着换。canvas 里就没有这个便利，只能靠 readToken。
  */
 export function tooltipStyle(p: ChartPalette) {
   return {
     backgroundColor: p.card,
     borderColor: p.border,
     borderWidth: 1,
-    textStyle: { color: p.text, fontSize: 12 },
+    borderRadius: 8,
+    padding: 10,
+    extraCssText: 'box-shadow: var(--lz-shadow-md);',
+    textStyle: { color: p.text, fontSize: 12, lineHeight: 18 },
     axisPointer: { type: 'line', lineStyle: { color: p.border } },
   } as const
+}
+
+/**
+ * hex → rgba(…, alpha)
+ *
+ * 图表的面积渐变 / 参考线都需要「同色不同透明度」，而 canvas 里既不能用
+ * `color-mix()` 也不能用 CSS 变量，只能拿到具体色值再手工拼 alpha。
+ * 认不出来（rgb()/hsl()/令牌兜底值）时原样返回：宁可少一层渐变，
+ * 也不要因为解析失败把图表画成透明。
+ *
+ * @param color `#rgb` / `#rrggbb`，或任意无法解析的颜色字符串
+ * @param alpha 0~1
+ */
+export function withAlpha(color: string, alpha: number): string {
+  const hex = color.trim()
+  const short = /^#([\da-f])([\da-f])([\da-f])$/i.exec(hex)
+  const long = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex)
+  const parts = long
+    ? [long[1], long[2], long[3]]
+    : short
+      ? [short[1]!.repeat(2), short[2]!.repeat(2), short[3]!.repeat(2)]
+      : null
+  if (!parts)
+    return color
+  const [r, g, b] = parts.map(v => Number.parseInt(v!, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
+ * 面积渐变的配置对象（上浓下透）
+ *
+ * 折线的 areaStyle 如果只给一个纯色 + opacity，视觉上就是一块平板；
+ * 改成垂直渐变后线条与面积之间才有「从线往下雾化」的层次，
+ * 这是折线图看起来「贵」和「便宜」的分水岭。
+ *
+ * @param color 线的颜色（hex）
+ * @param top 顶部不透明度（线的位置），默认 0.22
+ */
+export function areaFade(color: string, top = 0.22) {
+  return {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: withAlpha(color, top) },
+      { offset: 1, color: withAlpha(color, 0) },
+    ],
+  }
+}
+
+/**
+ * 柱状渐变的配置对象（上浓下淡）
+ *
+ * 纯色柱体在密集的柱状图里容易连成一整块色带；纵向渐变给每根柱子一点
+ * 层次，也让「柱子从基线长出来」这件事更清楚。渐变的坐标系绑的是**每根柱子
+ * 自己的 bbox**，所以 offset 0 = 柱子顶端、offset 1 = 柱子底部。
+ *
+ * @param color 柱色（hex）
+ * @param bottom 底端不透明度，默认 0.68
+ */
+export function barFade(color: string, bottom = 0.68) {
+  return {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: withAlpha(color, 1) },
+      { offset: 1, color: withAlpha(color, bottom) },
+    ],
+  }
+}
+
+/**
+ * 一组数值的平均值，用作趋势图的月均参考线
+ *
+ * 空数组返回 null（不给参考线），避免 0 被当成一条贴着 x 轴的假线画出来。
+ *
+ * @param values 原始数值序列（分）
+ */
+export function averageOrNull(values: number[]): number | null {
+  if (!values.length)
+    return null
+  return values.reduce((sum, v) => sum + v, 0) / values.length
 }
 
 /**

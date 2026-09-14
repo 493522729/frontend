@@ -94,6 +94,12 @@
   /* 数字专用：等宽，表格里金额右对齐时不会参差 */
   --lz-font-num: 'JetBrains Mono', 'SF Mono', ui-monospace, 'Menlo', monospace;
 
+  /* ─── 表单控件统一尺寸（同类型控件必须同高，宽度按场景）──────── */
+  --lz-form-height-sm: 30px;
+  --lz-form-height-md: 36px;
+  --lz-form-height-lg: 40px;
+  --lz-form-min-width: 120px;
+
   /* ─── 骨架尺寸（布局组件与内容区共用，避免各写各的）──────────── */
   --lz-sidebar-width: 240px;
   --lz-sidebar-width-collapsed: 64px;

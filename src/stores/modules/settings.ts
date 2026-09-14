@@ -1,3 +1,4 @@
+import type { TransactionType } from '@/enums/transaction'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import { computed } from 'vue'
 import { useSiteConfigStore } from '@/stores/modules/siteConfig'
@@ -14,9 +15,27 @@ import { useSiteConfigStore } from '@/stores/modules/siteConfig'
  *   架构文档 3.1 明确「颜色不是唯一编码」——金额永远带 +/− 符号，
  *   颜色只是辅助。但用户有 A 股习惯，必须能给一个统一开关，
  *   散落在各页面就改不全、还会和符号语义打架。
+ *
+ * typeColor / typeColorBg 是同一套语义色的「交易类型版」：
+ * 交易大表的类型标签、筛选栏的色点、分类管理的分组色点都从这里取色，
+ * 避免各处再写一遍红/绿硬编码（切一次偏好漏改一处就不一致）。
  */
 export type MoneyColorMode = 'income-green' | 'income-red'
 export type AmountTone = 'success' | 'danger' | 'neutral'
+
+/** 语义色调 → 主色 token（明暗主题各自有值，下面只管映射，不写死色值） */
+const TONE_VAR: Record<AmountTone, string> = {
+  success: 'var(--lz-success)',
+  danger: 'var(--lz-danger)',
+  neutral: 'var(--lz-info)',
+}
+
+/** 语义色调 → 浅底色 token（标签底色用，和主色成对出现） */
+const TONE_BG_VAR: Record<AmountTone, string> = {
+  success: 'var(--lz-success-bg)',
+  danger: 'var(--lz-danger-bg)',
+  neutral: 'var(--lz-info-bg)',
+}
 
 export const useSettingsStore = defineStore('settings', () => {
   /** 金额配色偏好：默认收入绿/支出红（记账直觉），A 股习惯可切。来源为落库的站点配置 */
@@ -39,7 +58,40 @@ export const useSettingsStore = defineStore('settings', () => {
     return incomeIsGreen ? 'danger' : 'success'
   }
 
-  return { moneyColorMode, toneFor }
+  /**
+   * 交易类型 → 颜色（色点 / 标签文字色都用它）
+   * ───────────────────────────────────────────────────────────
+   * 支出、收入跟随「金额配色偏好」，用户切成 A 股习惯（income-red）时一起翻转；
+   * 转账与金额无关，固定走中性信息蓝 —— 这也是「转账不参与偏好翻转」的落点，
+   * 否则切一次偏好，转账的颜色也跟着变，等于失去了中性语义。
+   * 返回的是 CSS 变量名而不是色值：明暗主题自动跟随（颜色永远走 token）。
+   */
+  function typeColor(type: TransactionType): string {
+    return TONE_VAR[toneFor(type)]
+  }
+
+  /** 交易类型 → 浅底色（标签底色用；同样跟随偏好与主题，配对 --lz-*-bg 变量） */
+  function typeColorBg(type: TransactionType): string {
+    return TONE_BG_VAR[toneFor(type)]
+  }
+
+  /**
+   * 语义色调 → 颜色 token
+   * ───────────────────────────────────────────────────────────
+   * 给「手上只有色调、没有交易类型」的场景用 —— 典型是数据卡：
+   * 结余卡按正负推出 income / expense / neutral，再映射一次就成了色调，
+   * 不需要为了拿个色值硬凑一个 TransactionType 出来。
+   */
+  function toneColor(tone: AmountTone): string {
+    return TONE_VAR[tone]
+  }
+
+  /** 语义色调 → 浅底色 token（与 toneColor 成对） */
+  function toneColorBg(tone: AmountTone): string {
+    return TONE_BG_VAR[tone]
+  }
+
+  return { moneyColorMode, toneFor, typeColor, typeColorBg, toneColor, toneColorBg }
 })
 
 if (import.meta.hot)

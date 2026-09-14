@@ -13,15 +13,20 @@ export type TransactionType = (typeof TRANSACTION_TYPES)[number]
 export const TRANSACTION_SOURCES = ['manual', 'import', 'recurring'] as const
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number]
 
-/** 交易类型元信息（中文 / Naive Tag 配色 / 排序权重） */
+/**
+ * 交易类型元信息（中文 / 排序权重）
+ *
+ * 注意：这里不再放「标签配色」。颜色是用户可配置的（系统设置 → 金额配色偏好，
+ * 见 stores/modules/settings 的 typeColor / typeColorBg），
+ * 在枚举里写死 success/error/info 会导致切偏好后标签颜色和金额颜色打架。
+ */
 export const TRANSACTION_TYPE_META: Record<TransactionType, {
   label: string
-  naiveTagType: 'success' | 'error' | 'info'
   sortOrder: number
 }> = {
-  expense: { label: '支出', naiveTagType: 'error', sortOrder: 0 },
-  income: { label: '收入', naiveTagType: 'success', sortOrder: 1 },
-  transfer: { label: '转账', naiveTagType: 'info', sortOrder: 2 },
+  expense: { label: '支出', sortOrder: 0 },
+  income: { label: '收入', sortOrder: 1 },
+  transfer: { label: '转账', sortOrder: 2 },
 }
 
 /** 交易来源元信息 */
