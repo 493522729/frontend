@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { dateZhCN, zhCN } from 'naive-ui'
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/modules/app'
 import { resolveNaiveOverrides, resolveNaiveTheme } from '@/theme/naive'
@@ -10,7 +11,8 @@ const naiveOverrides = computed(() => resolveNaiveOverrides(app.isDark))
 </script>
 
 <template>
-  <n-config-provider :theme="naiveTheme" :theme-overrides="naiveOverrides">
+  <!-- locale / date-locale 必须在这里一次性注入，否则 NDatePicker 会显示英文月份/星期 -->
+  <n-config-provider :theme="naiveTheme" :theme-overrides="naiveOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <!--
       Naive UI 函数式 API 依赖这些 provider 注入上下文
       顺序按官方约定：loading-bar → dialog → notification → message
