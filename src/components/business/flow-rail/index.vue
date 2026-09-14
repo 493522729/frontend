@@ -14,8 +14,8 @@
  * —— 屏幕阅读器读「收入占比 58.8%，支出占比 41.2%」，而不是读一个空 div。
  */
 import { computed, ref, watch } from 'vue'
+import AnimatedMoney from '@/components/base/animated-money/index.vue'
 import { useSettingsStore } from '@/stores/modules/settings'
-import { formatCents } from '@/utils/money'
 
 const props = withDefaults(defineProps<{
   /** 收入合计（分） */
@@ -26,9 +26,20 @@ const props = withDefaults(defineProps<{
   showValues?: boolean
   /** 轨道下方的说明文字 */
   caption?: string
+  /**
+   * 两端的名称（左、右）
+   *
+   * 默认是收支口径。账户页复用这条轨画「资产 / 负债」时传 ['资产', '负债'] ——
+   * 结构关系是一样的（两段铺满 100%），只有叫法不同，没必要再抄一份组件。
+   */
+  labels?: [string, string]
+  /** 无数据时的兜底文案（默认按收支口径写） */
+  emptyText?: string
 }>(), {
   showValues: false,
   caption: '收支结构',
+  labels: () => ['收入', '支出'] as [string, string],
+  emptyText: '暂时没有收支',
 })
 
 const settings = useSettingsStore()
@@ -92,12 +103,16 @@ function segStyle(ratio: number, amount: number, color: string) {
     <div v-if="showValues" class="rail-values">
       <span class="rail-figure">
         <span class="rail-figure__dot" :style="{ background: incomeColor }" />
-        <span class="rail-figure__label">收入</span>
-        <b class="rail-figure__value">+{{ formatCents(safeIncome, { withSymbol: true }) }}</b>
+        <span class="rail-figure__label">{{ props.labels[0] }}</span>
+        <b class="rail-figure__value">
+          <AnimatedMoney :cents="safeIncome" with-sign />
+        </b>
       </span>
       <span class="rail-figure">
-        <span class="rail-figure__label">支出</span>
-        <b class="rail-figure__value">-{{ formatCents(safeExpense, { withSymbol: true }) }}</b>
+        <span class="rail-figure__label">{{ props.labels[1] }}</span>
+        <b class="rail-figure__value">
+          <AnimatedMoney :cents="-safeExpense" with-sign />
+        </b>
         <span class="rail-figure__dot" :style="{ background: expenseColor }" />
       </span>
     </div>
@@ -112,15 +127,15 @@ function segStyle(ratio: number, amount: number, color: string) {
       <span v-if="hasData" class="rail-legend">
         <span class="rail-legend__item">
           <i class="rail-legend__dot" :style="{ background: incomeColor }" />
-          收入 {{ incomePercent }}%
+          {{ props.labels[0] }} {{ incomePercent }}%
         </span>
         <span class="rail-legend__sep" aria-hidden="true">·</span>
         <span class="rail-legend__item">
           <i class="rail-legend__dot" :style="{ background: expenseColor }" />
-          支出 {{ expensePercent }}%
+          {{ props.labels[1] }} {{ expensePercent }}%
         </span>
       </span>
-      <span v-else class="rail-legend rail-legend--empty">暂时没有收支</span>
+      <span v-else class="rail-legend rail-legend--empty">{{ props.emptyText }}</span>
     </p>
   </div>
 </template>
