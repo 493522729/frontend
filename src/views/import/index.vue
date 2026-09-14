@@ -3,17 +3,20 @@ import type { ColumnMapping, ParsedImportTxn } from '@/types/import'
 import {
   NAlert,
   NButton,
-  NEmpty,
   NSelect,
   NSpace,
   NStatistic,
+  NStep,
+  NSteps,
   NSwitch,
   NTag,
   useMessage,
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
+import EmptyState from '@/components/business/empty-state/index.vue'
 import { useImportStore } from '@/stores/modules/import'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
 const store = useImportStore()
 const message = useMessage()
@@ -34,11 +37,11 @@ const {
 } = storeToRefs(store)
 
 const categoryOptionsByDir = computed(() => ({
-  income: categories.value.filter(c => c.type === 'income').map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
-  expense: categories.value.filter(c => c.type === 'expense').map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
+  income: categories.value.filter(c => c.type === 'income').map(c => emojiOption(c.icon, c.name, c.id)),
+  expense: categories.value.filter(c => c.type === 'expense').map(c => emojiOption(c.icon, c.name, c.id)),
 }))
 
-const accountOptions = computed(() => accounts.value.map(a => ({ label: a.name, value: a.id })))
+const accountOptions = computed(() => accounts.value.map(a => emojiOption(a.icon, a.name, a.id)))
 
 const columnOptions = computed(() => [
   { label: '（不映射）', value: '' },
@@ -91,22 +94,32 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
       银行流水导入
     </h1>
 
-    <div class="steps">
-      <span :class="{ active: step === 'upload' }">1 上传</span>
-      <span :class="{ active: step === 'mapping' }">2 列映射</span>
-      <span :class="{ active: step === 'preview' }">3 预览</span>
-      <span :class="{ active: step === 'done' }">4 完成</span>
-    </div>
+    <NSteps
+      class="import-steps"
+      :current="['upload', 'mapping', 'preview', 'done'].indexOf(step) + 1"
+      size="small"
+    >
+      <NStep title="上传" />
+      <NStep title="列映射" />
+      <NStep title="预览" />
+      <NStep title="完成" />
+    </NSteps>
 
     <!-- 上传 -->
-    <NEmpty v-if="step === 'upload'" description="上传招行导出的 Excel / CSV，自动去重 + 匹配账户">
+    <EmptyState
+      v-if="step === 'upload'"
+      variant="upload"
+      title="上传银行流水"
+      desc="支持招行等导出的 Excel / CSV，自动去重 + 匹配账户"
+      size="md"
+    >
       <template #extra>
         <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" style="display: none" @change="onFileChange">
         <NButton type="primary" @click="fileInput?.click()">
           选择文件
         </NButton>
       </template>
-    </NEmpty>
+    </EmptyState>
 
     <!-- 列映射 -->
     <div v-else-if="step === 'mapping'" class="card">
@@ -132,7 +145,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
       <p v-if="unmapped.length" class="tip warn">
         未识别列：{{ unmapped.join('、') }}
       </p>
-      <NSpace>
+      <NSpace class="form-actions" justify="end">
         <NButton @click="store.reset()">
           重新选择
         </NButton>
@@ -156,7 +169,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
 
       <NSpace class="options">
         <span>导入账户：</span>
-        <NSelect v-model:value="accountId" :options="accountOptions" placeholder="选择账户" style="width: 200px" />
+        <NSelect v-model:value="accountId" :options="accountOptions" :render-label="renderEmojiLabel" placeholder="选择账户" style="width: 200px" />
         <span>保留重复项：</span>
         <NSwitch v-model:value="keepDuplicates" />
       </NSpace>
@@ -185,6 +198,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
                 <NSelect
                   size="small"
                   :options="categoryOptionsByDir[row.direction]"
+                  :render-label="renderEmojiLabel"
                   :value="effectiveCategory(row)"
                   style="width: 130px"
                   @update:value="(v: string | number | null) => onSelectCategory(row, v)"
@@ -206,7 +220,7 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
         </table>
       </div>
 
-      <NSpace>
+      <NSpace class="form-actions" justify="end">
         <NButton @click="store.toPreview()">
           刷新预览
         </NButton>
@@ -225,11 +239,11 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
     </div>
 
     <!-- 完成 -->
-    <div v-else-if="step === 'done'" class="card">
+    <div v-else-if="step === 'done'" class="card done-card">
       <NAlert type="success" :title="`导入完成：新增 ${result?.inserted ?? 0} 条，跳过 ${result?.skipped ?? 0} 条`">
         流水已写入所选账户，可在「交易大表」查看；重复项已按你的设置处理。
       </NAlert>
-      <NSpace style="margin-top: 16px">
+      <NSpace>
         <NButton type="primary" @click="store.reset()">
           再导入一次
         </NButton>
@@ -252,32 +266,21 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   margin: 0 0 16px;
 }
 
-.steps {
-  display: flex;
-  gap: 8px;
+.import-steps {
   margin-bottom: 24px;
-
-  span {
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    color: var(--lz-text-regular);
-    background: var(--lz-bg-card);
-    border: 1px solid var(--lz-border);
-
-    &.active {
-      color: #fff;
-      background: var(--lz-primary-500);
-      border-color: var(--lz-primary-500);
-    }
-  }
 }
 
 .card {
   background: var(--lz-bg-card);
   border: 1px solid var(--lz-border);
-  border-radius: 10px;
+  border-radius: var(--lz-radius-xl);
   padding: 20px;
+}
+
+.done-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .tip {
@@ -329,6 +332,10 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   border: 1px solid var(--lz-border);
   border-radius: 8px;
   margin-bottom: 16px;
+}
+
+.form-actions {
+  margin-top: 4px;
 }
 
 .preview-table {

@@ -12,6 +12,8 @@ import type { Account, Category } from '@/types/transaction'
 import { NButton, NDatePicker, NInput, NSelect } from 'naive-ui'
 import { computed } from 'vue'
 import { TRANSACTION_TYPE_META, TRANSACTION_TYPES } from '@/enums/transaction'
+import { useSettingsStore } from '@/stores/modules/settings'
+import { dotOption, emojiOption, renderDotLabel, renderEmojiLabel } from '@/utils/select-option'
 
 interface Props {
   filter: FilterState
@@ -32,6 +34,9 @@ const emit = defineEmits<{
   /** 重置全部筛选条件 */
   reset: []
 }>()
+
+/** 类型色点取色来源（跟随系统设置里的金额配色偏好） */
+const settings = useSettingsStore()
 
 /** 造可写 computed：模板继续用 v-model 语法，写入自动转成 change 事件 */
 function field<K extends keyof FilterState>(key: K) {
@@ -55,13 +60,20 @@ const statusOptions = [
   { label: '已记', value: 'confirmed' },
 ]
 
-const typeOptions = TRANSACTION_TYPES.map(value => ({
-  label: TRANSACTION_TYPE_META[value].label,
+/**
+ * 类型筛选项：前面带语义色点。
+ * 支出 / 收入取「系统设置 → 金额配色偏好」（绿收 or A 股红收都会跟着翻转），
+ * 转账固定中性蓝 —— 取色统一走 settings.typeColor，页面里不再写死红绿。
+ */
+const typeOptions = computed(() => TRANSACTION_TYPES.map(value => dotOption(
+  settings.typeColor(value),
+  TRANSACTION_TYPE_META[value].label,
   value,
-}))
+)))
 
-const accountOptions = computed(() => props.accounts.map(a => ({ label: a.name, value: a.id })))
-const categoryOptions = computed(() => props.categories.map(c => ({ label: c.name, value: c.id })))
+// 账户 / 分类都带图标：和右侧大表单元格里的图标风格对齐（Twemoji，见 renderEmojiLabel）
+const accountOptions = computed(() => props.accounts.map(a => emojiOption(a.icon, a.name, a.id)))
+const categoryOptions = computed(() => props.categories.map(c => emojiOption(c.icon, c.name, c.id)))
 
 function reset() {
   emit('reset')
@@ -109,6 +121,7 @@ function reset() {
         <NSelect
           v-model:value="type"
           :options="typeOptions"
+          :render-label="renderDotLabel"
           :input-props="{ 'aria-label': '类型筛选' }"
           placeholder="全部"
           clearable
@@ -120,6 +133,7 @@ function reset() {
         <NSelect
           v-model:value="accountIds"
           :options="accountOptions"
+          :render-label="renderEmojiLabel"
           :input-props="{ 'aria-label': '账户筛选' }"
           multiple
           placeholder="全部账户"
@@ -132,6 +146,7 @@ function reset() {
         <NSelect
           v-model:value="categoryIds"
           :options="categoryOptions"
+          :render-label="renderEmojiLabel"
           :input-props="{ 'aria-label': '分类筛选' }"
           multiple
           placeholder="全部分类"

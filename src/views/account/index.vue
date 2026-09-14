@@ -10,6 +10,7 @@ import { ACCOUNT_TYPE_META, ACCOUNT_TYPES } from '@/enums/account'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { formatCents, parseYuanToCents } from '@/utils/money'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
 /**
  * 账户管理页（Next 清单 #1，PRD §15.3 / US-004）
@@ -145,7 +146,7 @@ const migrateTo = ref<number | null>(null)
 const migrateOptions = computed(() =>
   accounts.value
     .filter(a => a.id !== target.value?.id)
-    .map(a => ({ label: `${a.icon} ${a.name}`, value: a.id })),
+    .map(a => emojiOption(a.icon, a.name, a.id)),
 )
 
 async function openDelete(a: AccountWithBalance) {
@@ -350,6 +351,7 @@ watch(() => book.currentBookId, () => accountStore.refresh())
         <NSelect
           v-model:value="migrateTo"
           :options="migrateOptions"
+          :render-label="renderEmojiLabel"
           placeholder="选择目标账户"
         />
       </div>

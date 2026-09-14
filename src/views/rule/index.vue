@@ -16,6 +16,7 @@ import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useRuleStore } from '@/stores/modules/rule'
+import { useSettingsStore } from '@/stores/modules/settings'
 import {
   FIELD_DEFAULTS,
   OPERATOR_LABELS,
@@ -24,12 +25,14 @@ import {
   RULE_FIELDS,
   TRANSACTION_TYPE_OPTIONS,
 } from '@/types/rule'
+import { dotOption, emojiOption, renderDotLabel, renderEmojiLabel } from '@/utils/select-option'
 
 const message = useMessage()
 const dialog = useDialog()
 const ruleStore = useRuleStore()
 const bookStore = useBookStore()
 const dict = useDictStore()
+const settings = useSettingsStore()
 
 // ── 列表加载 ──────────────────────────────────────────────
 onMounted(async () => {
@@ -40,7 +43,7 @@ onMounted(async () => {
 const ALL_BOOKS = 0
 const bookOptions = computed(() => [
   { label: '全账本', value: ALL_BOOKS },
-  ...bookStore.books.map(b => ({ label: `${b.icon} ${b.name}`, value: b.id })),
+  ...bookStore.books.map(b => emojiOption(b.icon, b.name, b.id)),
 ])
 
 // ── 编辑态 ────────────────────────────────────────────────
@@ -183,6 +186,13 @@ function operatorOptions(field: RuleField) {
 const fieldLabelMap = Object.fromEntries(RULE_FIELDS.map(f => [f.value, f.label]))
 const typeLabelMap = Object.fromEntries(TRANSACTION_TYPE_OPTIONS.map(t => [t.value, t.label]))
 
+/** 条件里的「类型」取值选项：带语义色点，取色同筛选栏（settings.typeColor） */
+const typeValueOptions = computed(() => TRANSACTION_TYPE_OPTIONS.map(o => dotOption(
+  settings.typeColor(o.value),
+  o.label,
+  o.value,
+)))
+
 function conditionPreview(c: RuleCondition): string {
   const field = fieldLabelMap[c.field] ?? c.field
   const op = OPERATOR_LABELS[c.op] ?? c.op
@@ -209,17 +219,17 @@ function actionPreview(a: RuleAction): string {
   return `通知「${a.payload.message}」`
 }
 
-// 分类选择器选项：按支出/收入分组，根→二级缩进展示
+// 分类选择器选项：按支出/收入分组，根→二级缩进展示（缩进交给 renderEmojiLabel 转 padding）
 const categorySelectOptions = computed(() => {
   const sort = (a: Category, b: Category) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
   const buildForType = (type: 'expense' | 'income') => {
     const roots = dict.categories.filter(c => c.type === type && c.parentId == null).sort(sort)
     const children: { label: string, value: number }[] = []
     for (const r of roots) {
-      children.push({ label: `${r.icon} ${r.name}`, value: r.id })
+      children.push(emojiOption(r.icon, r.name, r.id))
       const subs = dict.categories.filter(c => c.type === type && c.parentId === r.id).sort(sort)
       for (const s of subs)
-        children.push({ label: `  ${s.icon} ${s.name}`, value: s.id })
+        children.push(emojiOption(s.icon, s.name, s.id, 1))
     }
     return { type: 'group' as const, label: type === 'expense' ? '支出' : '收入', key: type, children }
   }
@@ -368,7 +378,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
         </div>
         <div>
           <label class="form-label">适用账本</label>
-          <NSelect v-model:value="form.bookId" :options="bookOptions" />
+          <NSelect v-model:value="form.bookId" :options="bookOptions" :render-label="renderEmojiLabel" />
         </div>
 
         <div>
@@ -392,7 +402,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
                 style="width: 110px"
               />
               <NInputNumber v-if="c.field === 'amount'" v-model:value="c.value as number" :show-button="false" placeholder="金额（分）" style="width: 120px" />
-              <NSelect v-else-if="c.field === 'type'" :value="c.value as string" :options="TRANSACTION_TYPE_OPTIONS" placeholder="选择类型" style="width: 140px" @update:value="v => (c.value = String(v))" />
+              <NSelect v-else-if="c.field === 'type'" :value="c.value as string" :options="typeValueOptions" :render-label="renderDotLabel" placeholder="选择类型" style="width: 140px" @update:value="v => (c.value = String(v))" />
               <NInput v-else :value="c.value as string" :placeholder="FIELD_DEFAULTS[c.field]" style="flex: 1" @update:value="v => (c.value = String(v))" />
               <NButton v-if="form.conditions.length > 1" text type="error" @click="removeCondition(idx)">
                 删除
@@ -411,7 +421,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
           <NSpace vertical size="small">
             <div v-for="(a, idx) in form.actions" :key="idx" class="form-row">
               <NSelect :value="a.type" :options="RULE_ACTIONS.map(o => ({ label: o.label, value: o.value }))" style="width: 140px" @update:value="v => (a.type = v as typeof a.type)" />
-              <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId || undefined" :options="categorySelectOptions" placeholder="选择分类" clearable style="flex: 1" @update:value="v => (a.payload.categoryId = v || 0)" />
+              <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId || undefined" :options="categorySelectOptions" :render-label="renderEmojiLabel" placeholder="选择分类" clearable style="flex: 1" @update:value="v => (a.payload.categoryId = v || 0)" />
               <NInput v-else-if="a.type === 'appendNote'" :value="a.payload.suffix as string" placeholder="追加文本" style="flex: 1" @update:value="v => (a.payload.suffix = v)" />
               <NInput v-else-if="a.type === 'addTag'" :value="a.payload.tag as string" placeholder="标签名" style="flex: 1" @update:value="v => (a.payload.tag = v)" />
               <NInput v-else :value="a.payload.message as string" placeholder="通知文案" style="flex: 1" @update:value="v => (a.payload.message = v)" />

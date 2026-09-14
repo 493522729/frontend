@@ -25,6 +25,7 @@ import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { formatCents } from '@/utils/money'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 import { ensureVxeTable } from './_vxe-bootstrap'
 import FilterPanel from './components/FilterPanel.vue'
 import { useTransactionList } from './composables/useTransactionList'
@@ -159,7 +160,9 @@ function hasActiveFilter(f: typeof filter): boolean {
   )
 }
 
-const categoryOptions = computed(() => dict.categories.map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })))
+// 分类选项带 emoji（label 仍是字符串 → filterable 搜索照常按名字匹配），
+// 渲染交给 renderEmojiLabel 转 Twemoji，和表格里的分类图标风格保持一致
+const categoryOptions = computed(() => dict.categories.map(c => emojiOption(c.icon, c.name, c.id)))
 const batchCategoryId = ref<number | null>(null)
 
 /** 当前是否有生效的筛选条件 —— 空状态文案判断用 */
@@ -217,6 +220,20 @@ async function onCategoryChange(row: Transaction, v: number) {
   }
   catch {
     message.error('保存失败')
+  }
+}
+
+/**
+ * 类型标签配色：和金额、筛选色点同源（settings.typeColor / typeColorBg）。
+ * 不用 NTag 的 type="success|error|info"：那三档把绿红蓝写死在组件库里，
+ * 用户切成 A 股习惯（收入红）后，标签颜色会和金额颜色互相打架。
+ * 这里自己给色 —— 浅底色 + 主色文字，观感和 naive 默认标签一致。
+ */
+function typeTagColor(type: Transaction['type']) {
+  return {
+    color: settings.typeColorBg(type),
+    textColor: settings.typeColor(type),
+    borderColor: 'transparent',
   }
 }
 
@@ -611,6 +628,7 @@ async function onConfirmBatch() {
             <NSelect
               v-model:value="batchCategoryId"
               :options="categoryOptions"
+              :render-label="renderEmojiLabel"
               placeholder="批量改分类…"
               size="small"
               style="width: 180px"
@@ -692,9 +710,9 @@ async function onConfirmBatch() {
                 </div>
               </template>
 
-              <!-- 类型 -->
+              <!-- 类型：颜色取系统设置里的语义色（支出/收入随偏好翻转，转账固定中性蓝） -->
               <template #type_cell="{ row }">
-                <NTag :type="TRANSACTION_TYPE_META[(row as Transaction).type].naiveTagType" size="small" :bordered="false">
+                <NTag size="small" :bordered="false" :color="typeTagColor((row as Transaction).type)">
                   {{ TRANSACTION_TYPE_META[(row as Transaction).type].label }}
                 </NTag>
               </template>
@@ -714,6 +732,7 @@ async function onConfirmBatch() {
                   v-else
                   :value="row.categoryId"
                   :options="categoryOptions"
+                  :render-label="renderEmojiLabel"
                   :input-props="{ 'aria-label': `修改第 ${(row as Transaction).id} 行的分类` }"
                   size="small"
                   filterable

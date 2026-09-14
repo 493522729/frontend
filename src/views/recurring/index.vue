@@ -4,7 +4,6 @@ import {
   NButton,
   NCard,
   NDatePicker,
-  NEmpty,
   NForm,
   NFormItemGi,
   NGrid,
@@ -28,6 +27,7 @@ import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useRecurringStore } from '@/stores/modules/recurring'
 import { formatCents } from '@/utils/money'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
 const recurring = useRecurringStore()
 const book = useBookStore()
@@ -59,10 +59,10 @@ const form = reactive({
 const startDateTs = ref<number | null>(null)
 
 const categoryOptions = computed(() =>
-  categories.filter(c => c.type === form.type).map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
+  categories.filter(c => c.type === form.type).map(c => emojiOption(c.icon, c.name, c.id)),
 )
 const accountOptions = computed(() =>
-  accounts.value.map(a => ({ label: `${a.icon} ${a.name}`, value: a.id })),
+  accounts.value.map(a => emojiOption(a.icon, a.name, a.id)),
 )
 
 function resetForm() {
@@ -254,7 +254,13 @@ onMounted(() => {
             </div>
           </NSpace>
         </template>
-        <NEmpty v-else description="本月没有待确认的周期账单" />
+        <EmptyState
+          v-else
+          variant="inbox"
+          size="sm"
+          title="本月没有待确认的周期账单"
+          desc="周期账单会在到期日自动生成，到时来这里确认"
+        />
       </NCard>
 
       <!-- 模板配置 -->
@@ -336,10 +342,10 @@ onMounted(() => {
             <NDatePicker v-model:value="startDateTs" type="date" clearable style="width: 100%" />
           </NFormItemGi>
           <NFormItemGi label="分类">
-            <NSelect v-model:value="form.categoryId" :options="categoryOptions" placeholder="选择分类" />
+            <NSelect v-model:value="form.categoryId" :options="categoryOptions" :render-label="renderEmojiLabel" placeholder="选择分类" />
           </NFormItemGi>
           <NFormItemGi label="账户">
-            <NSelect v-model:value="form.accountId" :options="accountOptions" placeholder="选择账户" />
+            <NSelect v-model:value="form.accountId" :options="accountOptions" :render-label="renderEmojiLabel" placeholder="选择账户" />
           </NFormItemGi>
           <NFormItemGi :span="2" label="备注">
             <NInput v-model:value="form.note" placeholder="如 房租 / 工资" />
@@ -375,10 +381,10 @@ onMounted(() => {
             <NText>{{ confirmTarget.dueDate }}</NText>
           </NFormItemGi>
           <NFormItemGi label="分类">
-            <NSelect v-model:value="confirmForm.categoryId" :options="categoryOptions" />
+            <NSelect v-model:value="confirmForm.categoryId" :options="categoryOptions" :render-label="renderEmojiLabel" />
           </NFormItemGi>
           <NFormItemGi label="账户">
-            <NSelect v-model:value="confirmForm.accountId" :options="accountOptions" />
+            <NSelect v-model:value="confirmForm.accountId" :options="accountOptions" :render-label="renderEmojiLabel" />
           </NFormItemGi>
           <NFormItemGi :span="2" label="备注">
             <NInput v-model:value="confirmForm.note" />
