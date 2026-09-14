@@ -11,7 +11,9 @@ import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
+import { useSettingsStore } from '@/stores/modules/settings'
 import { formatCents, parseYuanToCents } from '@/utils/money'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 import { formatDate, today } from '@/utils/temporal'
 
 /**
@@ -32,6 +34,7 @@ const quickEntry = useQuickEntryStore()
 const dict = useDictStore()
 const book = useBookStore()
 const accountStore = useAccountStore()
+const settings = useSettingsStore()
 const message = useMessage()
 const notification = useNotification()
 
@@ -57,11 +60,11 @@ const availableCategories = computed(() => {
 })
 
 const categoryOptions = computed(() =>
-  availableCategories.value.map(c => ({ label: `${c.icon} ${c.name}`, value: c.id })),
+  availableCategories.value.map(c => emojiOption(c.icon, c.name, c.id)),
 )
 
 const accountOptions = computed(() =>
-  dict.accounts.map(a => ({ label: `${a.icon} ${a.name}`, value: a.id })),
+  dict.accounts.map(a => emojiOption(a.icon, a.name, a.id)),
 )
 
 /** 金额实时预览：输入合法且非 0 时显示「= ¥1,234.56」 */
@@ -291,13 +294,14 @@ useEventListener(document, 'keydown', onKeydown)
     :close-on-esc="true"
   >
     <div class="quick-entry">
-      <!-- 类型：支出 / 收入 / 转账 -->
+      <!-- 类型：支出 / 收入 / 转账（语义色随「金额配色偏好」走，见 styles 里的说明） -->
       <NRadioGroup v-model:value="form.type" name="quick-entry-type" class="type-group">
         <NRadioButton
           v-for="t in TRANSACTION_TYPES"
           :key="t"
           :value="t"
           class="type-btn"
+          :style="{ '--type-tone': settings.typeColor(t) }"
         >
           {{ TRANSACTION_TYPE_META[t].label }}
         </NRadioButton>
@@ -307,10 +311,15 @@ useEventListener(document, 'keydown', onKeydown)
       <div class="amount-field">
         <div class="amount-input-wrap">
           <span class="amount-symbol">¥</span>
+          <!-- bordered=false：Naive 在 mergedBordered 为真时会额外渲染
+               __border / __state-border 两层绝对定位的装饰元素（border: var(--n-border)），
+               这两层就是「大框套小框」里那个小框。与其在样式里和它赛跑，
+               不如从源头让它不渲染；下面的变量打平与 :deep 隐藏是双保险。 -->
           <NInput
             ref="amountInputRef"
             v-model:value="form.amountText"
             placeholder="0.00"
+            :bordered="false"
             :input-props="{ inputmode: 'decimal', autocomplete: 'off' }"
             class="amount-input"
             aria-label="金额"
@@ -328,6 +337,7 @@ useEventListener(document, 'keydown', onKeydown)
           <NSelect
             v-model:value="form.categoryId"
             :options="categoryOptions"
+            :render-label="renderEmojiLabel"
             placeholder="选择分类"
             filterable
             clearable
@@ -338,6 +348,7 @@ useEventListener(document, 'keydown', onKeydown)
           <NSelect
             v-model:value="form.accountId"
             :options="accountOptions"
+            :render-label="renderEmojiLabel"
             placeholder="选择账户"
           />
           <span v-if="fromAvailableText" class="field-hint">{{ fromAvailableText }}</span>
@@ -347,6 +358,7 @@ useEventListener(document, 'keydown', onKeydown)
           <NSelect
             v-model:value="form.toAccountId"
             :options="accountOptions"
+            :render-label="renderEmojiLabel"
             placeholder="选择账户"
           />
         </div>
@@ -416,10 +428,33 @@ useEventListener(document, 'keydown', onKeydown)
     color: var(--lz-text-regular);
     @include transition-paint();
 
+    &:hover:not(.n-radio-button--checked) {
+      background: var(--lz-bg-hover);
+    }
+
+    /**
+     * 选中态：不做「实心色块 + 白字」。
+     *
+     * 原来写的是 background: primary-600 + color: text-primary，两种模式都读不清：
+     *   亮色档 primary-600(#2a6bb4) 上写 text-primary(#1a2233) —— 深蓝底压深蓝字；
+     *   暗色档 primary-600 变成浅蓝(#94c4ea)，又配上浅色文字 #e8edf5。
+     * 根本原因是「主色填充」和「正文色」是两套独立 token，没有任何一种主题下
+     * 会恰好构成前后景关系，所以这组搭配从原理上就不成立。
+     *
+     * 改成 macOS 分段控件的做法：在轨道上「浮起一粒」。文字改用该类型的语义色
+     * （支出红 / 收入绿 / 转账蓝），由 --type-tone 传入 —— 于是这里的选中色
+     * 也跟着「系统设置 → 金额配色偏好」翻转，与全站金额配色同源。
+     * bg-card 在亮色档是纯白、暗色档是深灰，两边都比轨道更亮，所以浮起感成立。
+     */
     &.n-radio-button--checked {
-      background: var(--lz-primary-600);
-      color: var(--lz-text-primary);
-      box-shadow: var(--lz-shadow-sm);
+      background: var(--lz-bg-card);
+      color: var(--type-tone, var(--lz-text-primary));
+      // 细内描边给暗色档兜底：暗色下弹层底色与 bg-card 相同，只靠阴影浮不起来
+      box-shadow: var(--lz-shadow-sm), inset 0 0 0 1px var(--lz-border);
+
+      .n-radio-button__label {
+        font-weight: 600;
+      }
     }
   }
 
@@ -470,6 +505,8 @@ useEventListener(document, 'keydown', onKeydown)
 }
 
 .amount-symbol {
+  @include tabular;
+
   font-size: 22px;
   font-weight: 600;
   color: var(--lz-text-secondary);
@@ -477,37 +514,72 @@ useEventListener(document, 'keydown', onKeydown)
 
 .amount-input {
   flex: 1;
+  /**
+   * Naive 的输入框外壳是「一堆主题变量 + 四层 DOM」拼出来的，只写一次
+   * border: none 删不掉 —— 外层 .amount-input-wrap 已经是那个「框」了，
+   * 内层必须整体清空，否则会看到「外框 + 内框」的双层描边叠一个白底方块。
+   *
+   *   ① 根元素 .n-input 自带 background-color: var(--n-color)，
+   *      并且 :hover / .n-input--focus 会分别换成 --n-color-hover / --n-color-focus；
+   *   ② .n-input__border 画 1px 描边（border: var(--n-border)）；
+   *   ③ .n-input__state-border 承担 hover 描边与 focus 的 box-shadow 光圈。
+   *
+   * 之所以不逐个 DOM 层去覆盖：这样写等于和 Naive 的内部实现赛跑，它换个
+   * 状态类名就又漏一个。直接把外壳相关的变量一次打成 transparent / none，
+   * 所有状态（含 disabled、以及未来新增的状态类）都自动走同一条路。
+   *
+   * 这些变量是 Naive 以行内 style 注入在根元素上的，样式表要盖住必须 !important。
+   */
+  --n-height: 48px !important; // 垂直居中相关的一切尺寸（含 placeholder）都由它推导
+  --n-color: transparent !important;
+  --n-color-hover: transparent !important;
+  --n-color-focus: transparent !important;
+  --n-color-disabled: transparent !important;
+  --n-border: none !important;
+  --n-border-hover: none !important;
+  --n-border-disabled: none !important;
+  --n-box-shadow-focus: none !important;
+  // 左右内边距归零：留白统一交给外层 wrap，避免文字被二次缩进
+  --n-padding-left: 0 !important;
+  --n-padding-right: 0 !important;
+  // placeholder 与已输入文字同号同重，否则一聚焦就「跳字」
+  --n-placeholder-color: var(--lz-text-placeholder) !important;
 
-  // Naive 的垂直居中全部由 --n-height 推导：input-el 的 height/line-height、
-  // placeholder 的 padding 都从它计算。该变量以内联 style 注入在根元素上，
-  // 样式表覆盖必须 !important。设 48px 后高度/行高/垂直 padding 联动，
-  // 28px 大字的光标垂直居中且不顶满（caret ≈ 33px，上下各余 ~7px）
-  --n-height: 48px !important;
+  // 万一上面的变量注入被 Naive 的内部层绕过（不同版本注入位置不一样），
+  // 这里再显式卸载这两层装饰元素本身。display:none 是终局手段，
+  // 它们不参与布局（position:absolute），隐藏不会影响输入区尺寸
+  :deep(.n-input__border),
+  :deep(.n-input__state-border) {
+    display: none !important;
+  }
 
   :deep(.n-input__input-el) {
+    @include tabular;
+
     font-size: 20px;
     font-weight: 600;
     color: var(--lz-text-primary);
-    font-variant-numeric: tabular-nums;
     text-align: left;
     padding: 0;
     background: transparent;
   }
 
-  // Naive 的边框实际画在 state-border 的 box-shadow 上，
-  // 只写 border:none 删不掉 —— 聚焦时内层会残留一圈蓝框
-  :deep(.n-input__border),
-  :deep(.n-input__state-border) {
-    border: none;
-    box-shadow: none;
+  // placeholder 是绝对定位铺满的独立元素（原生 ::placeholder 被 Naive 设成了透明），
+  // 所以字号要单独给，并且要自己垂直居中
+  :deep(.n-input__placeholder) {
+    display: flex;
+    align-items: center;
+    font-size: 20px;
+    font-weight: 600;
   }
 }
 
 .amount-preview {
+  @include tabular;
+
   font-size: 14px;
   color: var(--lz-text-secondary);
   padding-left: 4px;
-  font-variant-numeric: tabular-nums;
 }
 
 // ── 字段网格：加大间距和标签可读性 ──────────────────
