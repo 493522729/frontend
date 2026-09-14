@@ -1,0 +1,129 @@
+/**
+ * 表单 / 筛选统一布局工具类
+ * ====================================================================
+ * 解决「同类型组件宽高不一致、筛选栏看起来不高级」的问题。
+ * 原则：
+ *   1. 同一场景内，输入框、选择器、按钮、日期选择器必须同高
+ *   2. 宽度按场景决定（搜索框 240px、分类多选 200px…），不强行统一
+ *   3. 标签在上、控件在下，行内组之间用分隔线或 24px 大间距
+ *
+ * 用法示例：
+ *   <div class="lz-filter-bar">
+ *     <div class="lz-filter-group">
+ *       <span class="lz-filter-label">时间</span>
+ *       <NDatePicker ... />
+ *       <span class="lz-filter-sep">~</span>
+ *       <NDatePicker ... />
+ *     </div>
+ *     <div class="lz-filter-divider" />
+ *     <div class="lz-filter-group">...</div>
+ *   </div>
+ */
+
+.lz-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--lz-space-4);
+  padding: var(--lz-space-3) var(--lz-space-4);
+  background: var(--lz-bg-card);
+  border: 1px solid var(--lz-border);
+  border-radius: var(--lz-radius-xl);
+  box-shadow: var(--lz-shadow-sm);
+}
+
+.lz-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--lz-space-2);
+  flex-wrap: wrap;
+}
+
+.lz-filter-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lz-text-secondary);
+  line-height: var(--lz-form-height-md);
+}
+
+.lz-filter-sep {
+  color: var(--lz-text-secondary);
+  font-size: 13px;
+  user-select: none;
+}
+
+.lz-filter-divider {
+  width: 1px;
+  height: var(--lz-form-height-md);
+  background: var(--lz-border);
+  margin: 0 var(--lz-space-1);
+}
+
+/* 单列筛选面板（交易大表左侧） */
+.lz-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lz-space-4);
+
+  .lz-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--lz-space-1);
+  }
+
+  .lz-field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--lz-text-secondary);
+  }
+}
+
+/* 表单控件的默认高度兜底：如果某处没传 size="small"，
+   至少保证高度不会乱；建议还是显式传 size="small" 或 "medium" */
+.lz-control {
+  --n-height: var(--lz-form-height-md) !important;
+}
+
+/* ── 下拉选项：Twemoji 图标 + 文本 ──────────────────────────
+   由 utils/select-option.ts 的 renderEmojiLabel 产出。
+   一块样式要同时照顾三处渲染位置：下拉列表项、单选回显、多选 tag。 */
+.lz-emoji-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.lz-emoji-option__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* ── 下拉选项：语义色点 + 文本 ──────────────────────────────
+   由 utils/select-option.ts 的 renderDotLabel 产出（交易「类型」下拉）。 */
+.lz-dot-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.lz-dot-option__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--lz-radius-full);
+  flex-shrink: 0;
+}
+
+.lz-dot-option__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
