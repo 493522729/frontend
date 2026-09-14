@@ -93,12 +93,13 @@ export function useScanStatus(
     total.value = sess.expiresIn
     remaining.value = sess.expiresIn
 
-    // 本地倒计时：每秒减一，归零时把状态置为 expired
+    // 本地倒计时：每秒减一，归零时把状态置为 expired 并停掉所有定时器
     countTimer = setInterval(() => {
       if (remaining.value > 0) {
         remaining.value--
         if (remaining.value === 0) {
           status.value = 'expired'
+          stopTimers()
           opts.onExpired?.()
         }
       }

@@ -16,10 +16,9 @@ import { useMessage } from 'naive-ui'
  *   - 状态切换时整层淡入淡出 + 缩放，4 个层级视觉清晰
  *   - 倒计时环放在右上角（与 QRPlaceholder 同源，方便集成）
  */
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/modules/auth'
 import { useScanStatus } from '../composables/useScanStatus'
-import QRPlaceholder from './QRPlaceholder.vue'
 import ScanCountdown from './ScanCountdown.vue'
 
 const props = defineProps<{
@@ -38,18 +37,24 @@ const auth = useAuthStore()
 const message = useMessage()
 
 const scan = useScanStatus({
-  onConfirmed: (state) => {
-    if (state.tokens) {
-      auth.loginByScan(state.tokens.accessToken, state.tokens.refreshToken)
-      message.success('扫码登录成功，欢迎回来！', { duration: 1500 })
-      // 延迟 400ms 让用户看到「登录成功」反馈再切走
-      setTimeout(emit, 400, 'success')
+  onConfirmed: async (state) => {
+    if (!state.tokens) {
+      console.error('[scan] 后端返回 confirmed 但缺少 tokens，跳过自动登录')
+      message.error('登录状态异常，请刷新二维码重试')
+      return
     }
+    await auth.loginByScan(state.tokens.accessToken, state.tokens.refreshToken)
+    message.success('扫码登录成功，欢迎回来！', { duration: 1500 })
+    // 延迟 400ms 让用户看到「登录成功」反馈再切走
+    setTimeout(emit, 400, 'success')
   },
   onExpired: () => {
     message.warning('二维码已过期，正在准备新的二维码', { duration: 1800 })
   },
 })
+
+/** 后端返回的是真实小程序码（data:image/png;base64…）时直接用 <img> 渲染；否则展示本地小程序码图片 */
+const isRealQr = computed(() => scan.qrValue.value.startsWith('data:image'))
 
 /** Tab 激活时才创建会话；切走/卸载时销毁，避免账号 Tab 下 hidden 扫码面板自动登录 */
 watch(
@@ -91,7 +96,8 @@ async function manualRefresh() {
 
     <!-- 二维码区 -->
     <div class="qr-wrap" :class="`is-${scan.status.value}`">
-      <QRPlaceholder :value="scan.qrValue.value" :size="220" />
+      <img v-if="isRealQr" :src="scan.qrValue.value" class="real-qr" alt="微信扫码登录">
+      <img v-else src="/scan-qr.jpg" class="real-qr" alt="微信扫码登录">
 
       <!-- 倒计时环（等待态 / 已扫描态 / 确认中态 持续显示；过期态隐藏） -->
       <div v-if="scan.status.value !== 'expired'" class="countdown-badge">
@@ -202,6 +208,16 @@ async function manualRefresh() {
   display: grid;
   place-items: center;
   isolation: isolate; // 让 z-index 在内部相对稳定
+}
+
+/** 真实小程序码：后端返回 data:image/png;base64，按 188×188 渲染（与 qr-wrap 内框同尺寸） */
+.real-qr {
+  width: 188px;
+  height: 188px;
+  border-radius: 12px;
+  background: #fff;
+  display: block;
+  user-select: none;
 }
 
 .countdown-badge {

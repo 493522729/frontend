@@ -79,8 +79,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** 微信扫码登录成功的回调（由登录页在收到 CONFIRMED 状态时调用） */
-  function loginByScan(access: string, refresh: string) {
+  async function loginByScan(access: string, refresh: string) {
     setTokens(access, refresh)
+    await refreshProfile()
   }
 
   /**

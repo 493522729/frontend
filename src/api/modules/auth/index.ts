@@ -75,51 +75,52 @@ export function fetchProfile(): Promise<UserInfo> {
   return http.get<UserInfo>('/user/profile')
 }
 
-// ── 微信扫码登录（mock 演示，P5 接真后端 SSE/轮询） ───────────────────────────
+// ── 微信扫码登录（条件化：默认前端 mock 兜底，开关开启走真实后端） ─────────────
+//
+// 开关：VITE_WECHAT_SCAN_ENABLED === 'true' 时，前端调真实后端
+//   POST /api/auth/scan              → 创建会话（后端返回真实小程序码 dataURL 或 mock 占位）
+//   GET  /api/auth/scan/{qrId}       → 轮询状态
+//   POST /api/auth/scan/{qrId}/cancel→ 取消
+// 小程序侧（miniprogram/）负责调 /{qrId}/scanned 与 /{qrId}/confirm 推进状态。
+//
+// 说明：mock 实现保留不删除（用户明确要求），仅作为未配置微信时的兜底分支。
 
-/**
- * 扫码会话状态机（前端 mock 演示版）。
- * 真接口见后端 AuthController：POST /api/auth/scan 创建 →
- * GET /api/auth/scan/{qrId} 轮询 → POST /api/auth/scan/{qrId}/cancel 取消。
- * 这里用 setInterval 在前端 mock 一份，让 UI 能完整演示三态流转。
- */
-const scanSessions = new Map<string, {
+/** 是否走真实微信扫码链路（由 .env 的 VITE_WECHAT_SCAN_ENABLED 控制） */
+export const WECHAT_SCAN_ENABLED = import.meta.env.VITE_WECHAT_SCAN_ENABLED === 'true'
+
+/** 创建扫码会话的返回结构（与后端 ScanCreateResult 对齐） */
+export interface ScanCreateResult {
+  qrId: string
+  expiresIn: number
+  qrCodeDataUrl: string
+}
+
+// ── 前端 mock 实现（兜底，不删除） ──────────────────────────────────────
+
+const mockSessions = new Map<string, {
   status: ScanStatus
   createdAt: number
   expired: boolean
 }>()
 
-/**
- * 创建扫码会话（mock）。真实实现：http.post<ScanCreateResult>('/auth/scan')
- * 返回 { qrId, expiresIn, qrCodeDataUrl }，前端拿 qrId 渲染二维码 + 启动轮询。
- * 这里本地生成一个虚拟二维码数据，方便 UI 查看。
- */
-export function createScanSession(): Promise<{ qrId: string, expiresIn: number, qrCodeDataUrl: string }> {
+export function createScanSessionMock(): Promise<ScanCreateResult> {
   return new Promise((resolve) => {
     setTimeout(() => {
       const qrId = `scan-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-      scanSessions.set(qrId, {
+      mockSessions.set(qrId, {
         status: 'waiting',
         createdAt: Date.now(),
         expired: false,
       })
-      resolve({
-        qrId,
-        expiresIn: 120,
-        qrCodeDataUrl: qrId,
-      })
+      resolve({ qrId, expiresIn: 120, qrCodeDataUrl: qrId })
     }, 300)
   })
 }
 
-/**
- * 轮询扫码状态（mock 状态机）。
- * 真实实现：http.get<ScanState>(`/auth/scan/${qrId}`)
- */
-export function pollScanSession(qrId: string): Promise<ScanState> {
+export function pollScanSessionMock(qrId: string): Promise<ScanState> {
   return new Promise((resolve) => {
     setTimeout(() => {
-      const session = scanSessions.get(qrId)
+      const session = mockSessions.get(qrId)
       if (!session || session.expired) {
         resolve({ status: 'expired', expiresIn: 0 })
         return
@@ -159,17 +160,41 @@ export function pollScanSession(qrId: string): Promise<ScanState> {
   })
 }
 
-/**
- * 主动取消扫码（用户点「刷新二维码」时调用，mock 版）。
- * 真实实现：http.post(`/auth/scan/${qrId}/cancel`)
- */
-export function cancelScanSession(qrId: string): Promise<void> {
+export function cancelScanSessionMock(qrId: string): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(() => {
-      const session = scanSessions.get(qrId)
+      const session = mockSessions.get(qrId)
       if (session)
         session.expired = true
       resolve()
     }, 100)
   })
+}
+
+// ── 真实后端实现（VITE_WECHAT_SCAN_ENABLED=true 时） ───────────────────────
+
+export function createScanSessionReal(): Promise<ScanCreateResult> {
+  return http.post<ScanCreateResult>('/auth/scan')
+}
+
+export function pollScanSessionReal(qrId: string): Promise<ScanState> {
+  return http.get<ScanState>(`/auth/scan/${qrId}`)
+}
+
+export function cancelScanSessionReal(qrId: string): Promise<void> {
+  return http.post<void>(`/auth/scan/${qrId}/cancel`)
+}
+
+// ── 统一导出：根据开关分流 ───────────────────────────────────────────────
+
+export function createScanSession(): Promise<ScanCreateResult> {
+  return WECHAT_SCAN_ENABLED ? createScanSessionReal() : createScanSessionMock()
+}
+
+export function pollScanSession(qrId: string): Promise<ScanState> {
+  return WECHAT_SCAN_ENABLED ? pollScanSessionReal(qrId) : pollScanSessionMock(qrId)
+}
+
+export function cancelScanSession(qrId: string): Promise<void> {
+  return WECHAT_SCAN_ENABLED ? cancelScanSessionReal(qrId) : cancelScanSessionMock(qrId)
 }

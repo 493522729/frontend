@@ -82,19 +82,7 @@ const features: Feature[] = [
 
     <header class="brand-head">
       <div class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32">
-          <defs>
-            <linearGradient id="brand-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="var(--lz-primary-300)" />
-              <stop offset="1" stop-color="var(--lz-primary-500)" />
-            </linearGradient>
-          </defs>
-          <!-- 圆角底板 -->
-          <rect x="3" y="3" width="26" height="26" rx="8" fill="url(#brand-grad)" />
-          <!-- 上升折线 + 端点：增长 / 财务意象 -->
-          <path d="M9 22 L14 15 L19 18.5 L23 11" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-          <circle cx="23" cy="11" r="2.4" fill="#fff" />
-        </svg>
+        <img src="/logo.png" alt="简账" class="brand-logo-img">
       </div>
       <span class="brand-name">简账</span>
     </header>
@@ -250,9 +238,11 @@ const features: Feature[] = [
   display: grid;
   place-items: center;
 
-  svg {
+  .brand-logo-img {
     width: 100%;
     height: 100%;
+    object-fit: contain;
+    display: block;
   }
 }
 
