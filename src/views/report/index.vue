@@ -19,6 +19,7 @@ import { NButton, NDataTable, NRadioButton, NRadioGroup, NSelect, NTag, useMessa
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { bucketRange } from '@/api/modules/report'
 import { listTransactions } from '@/api/modules/transaction'
+import AnimatedMoney from '@/components/base/animated-money/index.vue'
 import EmojiText from '@/components/business/emoji-text/index.vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import FlowRail from '@/components/business/flow-rail/index.vue'
@@ -81,8 +82,6 @@ const netCents = computed(() => (result.value?.income ?? 0) - (result.value?.exp
 const netTone = computed(() => settings.toneFor(
   netCents.value > 0 ? 'income' : netCents.value < 0 ? 'expense' : 'neutral',
 ))
-
-const netText = computed(() => formatCents(netCents.value, { withSymbol: true, withSign: true }))
 
 /** 当前粒度的中文标签，给图表卡标题做「口径提示」 */
 const granularityLabel = computed(() =>
@@ -348,7 +347,9 @@ function exportCsv(): void {
         <span class="summary-label">
           区间净额
         </span>
-        <b class="summary-value" :style="{ color: settings.toneColor(netTone) }">{{ netText }}</b>
+        <b class="summary-value" :style="{ color: settings.toneColor(netTone) }">
+          <AnimatedMoney :cents="netCents" with-sign />
+        </b>
         <span class="summary-meta">共 {{ result?.count ?? 0 }} 笔</span>
       </div>
 
