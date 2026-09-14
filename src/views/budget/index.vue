@@ -12,15 +12,18 @@
  * 花费由流水现算，所以进度条不需要「改账后手动刷新」：
  * 页面订阅 quickEntry.dataChangedAt，任何一笔流水变化都会重取。
  */
-import type { BudgetProgress } from '@/types/budget'
-import { NButton, NInputNumber, NModal, NPopconfirm, NProgress, NSelect, useMessage } from 'naive-ui'
+import type { BudgetProgress, BudgetTone } from '@/types/budget'
+import { NButton, NInputNumber, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { deleteBudget, upsertBudget } from '@/api/modules/budget'
+import TwemojiIcon from '@/components/business/twemoji-icon/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
-import { budgetTone } from '@/types/budget'
-import { readToken } from '@/utils/echarts'
+import { BUDGET_WARN_PERCENT, budgetTone } from '@/types/budget'
 import { formatCents } from '@/utils/money'
+import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
+import { formatMonth, monthLabel, parseMonth, today } from '@/utils/temporal'
+import BudgetGauge from './components/BudgetGauge.vue'
 import { useBudgets } from './composables/useBudgets'
 
 const { overview, month, loading, error, load } = useBudgets()
@@ -35,16 +38,35 @@ onMounted(() => {
 })
 
 // ── 阈值配色 ─────────────────────────────────────────────
-// NProgress 把颜色写进 SVG stroke 属性，CSS 变量在属性里不生效，
-// 所以这里读 token 的**当前值**（暗色切换后 watch 会重新取）
-const toneColors = computed(() => ({
-  safe: readToken('--lz-success', '#15803d'),
-  warning: readToken('--lz-warning', '#b45309'),
-  over: readToken('--lz-danger', '#dc2626'),
-}))
+/**
+ * 预算的色档位用「配额使用率」的语义（绿 → 橙 → 红），
+ * **不跟随**「系统设置 → 金额配色偏好」—— 那条偏好管的是收支金额的正负，
+ * 而这里是「离上限还有多少」，二者不是一回事。
+ *
+ * 传 CSS 变量名而不是 readToken 取出的色值：进度条已经换成自绘 DOM（BudgetGauge），
+ * 能直接吃 var()，于是明暗主题自动跟随。
+ * 之前的实现用 readToken 把变量读成字符串塞进 NProgress 的 stroke 属性，
+ * 而那个 computed 没有任何响应式依赖 —— 暗色切换后不会重算，颜色会停在旧主题上。
+ */
+const TONE_VAR: Record<BudgetTone, string> = {
+  safe: 'var(--lz-success)',
+  warning: 'var(--lz-warning)',
+  over: 'var(--lz-danger)',
+}
+
+/** 同色系的浅底，给胶囊徽标用（与文字色成对出现，对比度才够） */
+const TONE_BG_VAR: Record<BudgetTone, string> = {
+  safe: 'var(--lz-success-bg)',
+  warning: 'var(--lz-warning-bg)',
+  over: 'var(--lz-danger-bg)',
+}
 
 function toneColor(percent: number): string {
-  return toneColors.value[budgetTone(percent)]
+  return TONE_VAR[budgetTone(percent)]
+}
+
+function toneBg(percent: number): string {
+  return TONE_BG_VAR[budgetTone(percent)]
 }
 
 // ── 进页预警（US-006：超 80% toast）─────────────────────
@@ -95,21 +117,57 @@ const budgetedCategoryIds = computed(() =>
   new Set((overview.value?.items ?? []).map(i => i.budget.categoryId)),
 )
 
-/** 可选分类：全部支出分类（二级也行 —— 预算可以细到「外卖」） */
+/** 可选分类：全部支出分类（二级也行 —— 预算可以细到「外卖」），二级带一级缩进 */
 const createOptions = computed(() =>
   dict.categories
     .filter(c => c.type === 'expense' && !budgetedCategoryIds.value.has(c.id))
-    .map(c => ({
-      label: `${c.parentId != null ? '　' : ''}${c.icon} ${c.name}`,
-      value: c.id,
-    })),
+    .map(c => emojiOption(c.icon, c.name, c.id, c.parentId != null ? 1 : 0)),
 )
+
+/** 「2026年9月」—— 顶部 eyebrow 与弹窗标题共用 */
+const monthText = computed(() => monthLabel(parseMonth(month.value)))
+
+/** 当前选的月是不是「本月」：只有本月才谈得上「还剩几天/日均可用」 */
+const isCurrentMonth = computed(() => {
+  try {
+    return formatMonth(parseMonth(month.value)) === formatMonth(today().toPlainYearMonth())
+  }
+  catch {
+    return false
+  }
+})
+
+/** 本月剩余天数（含今天）；非当前月返回 0 */
+const daysLeft = computed(() => {
+  if (!isCurrentMonth.value)
+    return 0
+  const m = parseMonth(month.value)
+  return m.daysInMonth - today().day + 1
+})
+
+/**
+ * 日均可用：剩下的钱平摊到本月剩余天数
+ *
+ * 「本月还能花 1760」和「每天还能花 58」是两种执行力完全不同的信息，
+ * 后者才是控预算时真正用得上的那句。只在当月、且还没超支时给 ——
+ * 历史月份和已超支的情况下它只会误导。
+ */
+const dailyText = computed(() => {
+  const o = overview.value
+  if (!o || daysLeft.value <= 0)
+    return ''
+  if (o.total.budget.amount <= 0 || o.total.remaining <= 0)
+    return ''
+  // remaining / 天数 是分整数除法，floor 掉零头；ADR-7 只禁止浮点元转分，这里安全
+  const perDay = Math.floor(o.total.remaining / daysLeft.value)
+  return `日均可用 ${formatCents(perDay, { withSymbol: true })}`
+})
 
 const editorTitle = computed(() => {
   if (editorMode.value === 'total')
-    return '设置总预算'
+    return `设置${monthText.value}总预算`
   if (editorMode.value === 'create')
-    return '新建分类预算'
+    return `新建${monthText.value}分类预算`
   return `修改「${editingItem.value?.categoryName ?? ''}」预算`
 })
 
@@ -186,10 +244,19 @@ async function removeBudget(item: BudgetProgress): Promise<void> {
   }
 }
 
-/** 进度条只画到 100%，超支的「超出量」用文字表达（画 130% 反而看不出超了多少） */
-function barPercent(item: BudgetProgress): number {
-  return Math.min(item.percent, 100)
-}
+/**
+ * 总卡的语义色
+ *
+ * 未设置总额度时不用「安全绿」：percent 在这种情形下恒为 0，
+ * 按阈值算出来是 safe，但「没有设额度」根本谈不上安全 ——
+ * 染成绿色会让人误以为这个月花得很稳。这里退回中性灰。
+ */
+const totalTone = computed(() => {
+  const o = overview.value
+  if (!o || o.total.budget.amount <= 0)
+    return 'var(--lz-text-secondary)'
+  return toneColor(o.total.percent)
+})
 
 /** 剩余文案：超支显示红色「超支 ¥x」，未超显示「还剩 ¥x」 */
 function remainingText(item: BudgetProgress): string {
@@ -203,6 +270,9 @@ function remainingText(item: BudgetProgress): string {
   <div class="budget-page">
     <header class="page-header">
       <div class="heading">
+        <span class="page-eyebrow">
+          {{ monthText }}<template v-if="!isCurrentMonth"> · 历史月份</template>
+        </span>
         <h1 class="page-title">
           预算
         </h1>
@@ -212,99 +282,119 @@ function remainingText(item: BudgetProgress): string {
       </div>
 
       <!-- 月份切换：预算是月度的，看上月是复盘、看当月是控钱 -->
-      <NDatePicker
-        v-model:formatted-value="month"
-        type="month"
-        value-format="yyyy-MM"
-        :clearable="false"
-        size="small"
-      />
+      <div class="month-switch">
+        <NDatePicker
+          v-model:formatted-value="month"
+          type="month"
+          value-format="yyyy-MM"
+          :clearable="false"
+          size="small"
+        />
+      </div>
     </header>
 
     <NAlert v-if="error" type="error" :title="error" class="page-error" closable />
 
-    <!-- 总预算卡：当月全部支出的进度 -->
-    <section class="total-card">
-      <div class="total-head">
-        <div class="total-title">
-          <span class="total-icon">📊</span>
-          <div>
-            <h2 class="total-name">
-              本月总预算
-            </h2>
-            <p class="total-hint">
-              全部分类支出的总额度
-            </p>
+    <!--
+      总预算卡：当月全部支出的进度
+      结构上是「结论 → 证据 → 口径」：先给已花/额度这对大数字，
+      再用轨道给出比例，最后一行交代预警线和日均可用这类派生信息。
+    -->
+    <section
+      class="total-card"
+      :style="{ '--tone': totalTone }"
+    >
+      <template v-if="overview">
+        <div class="total-top">
+          <div class="total-figures">
+            <span class="total-eyebrow">本月总预算</span>
+            <div class="total-main">
+              <span class="total-spent">{{ formatCents(overview.total.spent, { withSymbol: true }) }}</span>
+              <span v-if="overview.total.budget.amount > 0" class="total-of">
+                / {{ formatCents(overview.total.budget.amount, { withSymbol: true }) }}
+              </span>
+              <span v-else class="total-unset">未设置总额度</span>
+            </div>
+          </div>
+
+          <div class="total-side">
+            <span
+              v-if="overview.total.budget.amount > 0"
+              class="total-remaining"
+            >{{ remainingText(overview.total) }}</span>
+            <NButton size="small" quaternary @click="openTotal">
+              {{ overview.total.budget.amount > 0 ? '修改' : '设置总预算' }}
+            </NButton>
           </div>
         </div>
-        <NButton size="small" quaternary @click="openTotal">
-          {{ (overview?.total.budget.amount ?? 0) > 0 ? '修改' : '设置总预算' }}
-        </NButton>
-      </div>
 
-      <NSkeleton v-if="loading" class="chart-skeleton" height="46px" />
-      <template v-else-if="overview">
-        <NProgress
-          type="line"
-          :percentage="barPercent(overview.total)"
-          :color="toneColor(overview.total.percent)"
-          :show-indicator="false"
+        <BudgetGauge
+          :percent="overview.total.percent"
+          :color="totalTone"
+          :label="`总预算已用 ${Math.round(overview.total.percent)}%`"
           :height="12"
-          :border-radius="6"
         />
-        <div class="total-nums">
-          <span class="total-spent">
-            已花 <b>{{ formatCents(overview.total.spent, { withSymbol: true }) }}</b>
-            <template v-if="overview.total.budget.amount > 0">
-              / {{ formatCents(overview.total.budget.amount, { withSymbol: true }) }}
-              <span class="total-percent">{{ overview.total.percent.toFixed(0) }}%</span>
-            </template>
-            <span
-              v-else
-              class="total-unset"
-            >（未设置总额度，仅统计）</span>
+
+        <div class="total-foot">
+          <span v-if="overview.total.budget.amount > 0" class="total-percent">
+            已用 {{ overview.total.percent.toFixed(0) }}%
           </span>
-          <span
-            v-if="overview.total.budget.amount > 0"
-            class="total-remaining"
-            :style="{ color: toneColor(overview.total.percent) }"
-          >
-            {{ remainingText(overview.total) }}
+          <span v-else class="total-percent">仅统计，不作预警</span>
+          <span class="total-foot-right">
+            <span class="total-key">
+              <i class="total-key__dash" aria-hidden="true" />预警线 {{ BUDGET_WARN_PERCENT }}%
+            </span>
+            <span v-if="dailyText" class="total-daily">{{ dailyText }}</span>
           </span>
+        </div>
+      </template>
+
+      <!-- 首屏：整块占位，避免卡片从「只有按钮」跳成「有数字」 -->
+      <template v-else>
+        <div class="total-top">
+          <div class="total-figures">
+            <NSkeleton text width="80px" :height="14" />
+            <NSkeleton text width="180px" :height="30" />
+          </div>
+          <NSkeleton text width="64px" :height="28" />
+        </div>
+        <NSkeleton class="chart-skeleton" height="12px" />
+        <div class="total-foot">
+          <NSkeleton text width="72px" :height="14" />
         </div>
       </template>
     </section>
 
     <!-- 分类预算卡网格 -->
     <section class="card-grid" aria-label="分类预算">
-      <div v-for="item in overview?.items ?? []" :key="item.budget.id" class="budget-card">
-        <div class="card-head">
-          <span class="card-icon">{{ item.categoryIcon }}</span>
+      <article
+        v-for="item in overview?.items ?? []"
+        :key="item.budget.id"
+        class="budget-card"
+        :style="{ '--tone': toneColor(item.percent), '--tone-bg': toneBg(item.percent) }"
+      >
+        <header class="card-head">
+          <TwemojiIcon class="card-icon" :emoji="item.categoryIcon" :size="20" :alt="item.categoryName" />
           <span class="card-name">{{ item.categoryName }}</span>
-          <span class="card-percent" :style="{ color: toneColor(item.percent) }">
-            {{ item.percent.toFixed(0) }}%
-          </span>
-        </div>
+          <!-- 使用率徽标：颜色即状态，但数字仍在 —— 颜色不是唯一编码（架构 3.1） -->
+          <span class="card-badge">{{ item.percent.toFixed(0) }}%</span>
+        </header>
 
-        <NProgress
-          type="line"
-          :percentage="barPercent(item)"
+        <BudgetGauge
+          :percent="item.percent"
           :color="toneColor(item.percent)"
-          :show-indicator="false"
-          :height="10"
-          :border-radius="5"
+          :label="`${item.categoryName}预算已用 ${Math.round(item.percent)}%`"
+          :height="8"
         />
 
         <div class="card-nums">
           <span class="card-spent">
             {{ formatCents(item.spent, { withSymbol: true }) }} / {{ formatCents(item.budget.amount, { withSymbol: true }) }}
           </span>
-          <span class="card-remaining" :style="{ color: toneColor(item.percent) }">
-            {{ remainingText(item) }}
-          </span>
+          <span class="card-remaining">{{ remainingText(item) }}</span>
         </div>
 
-        <div class="card-actions">
+        <footer class="card-actions">
           <NButton size="tiny" quaternary @click="openEdit(item)">
             编辑
           </NButton>
@@ -316,8 +406,8 @@ function remainingText(item: BudgetProgress): string {
             </template>
             删除「{{ item.categoryName }}」的本月预算？已花的钱不受影响。
           </NPopconfirm>
-        </div>
-      </div>
+        </footer>
+      </article>
 
       <!-- 新建卡：空态时它就是唯一的卡片，兼做「建第一个预算」的引导 -->
       <button class="add-card" type="button" @click="openCreate">
@@ -350,6 +440,7 @@ function remainingText(item: BudgetProgress): string {
           <NSelect
             v-model:value="createCategoryId"
             :options="createOptions"
+            :render-label="renderEmojiLabel"
             placeholder="选择支出分类"
             filterable
           />
@@ -394,6 +485,16 @@ function remainingText(item: BudgetProgress): string {
   margin-bottom: 20px;
 }
 
+// eyebrow：月份是「限定条件」，放标题之上才不会把副标题挤成两行
+.page-eyebrow {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lz-text-secondary);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
 .page-title {
   font-size: 20px;
   font-weight: 600;
@@ -407,74 +508,149 @@ function remainingText(item: BudgetProgress): string {
   margin: 0;
 }
 
+.month-switch {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
 .page-error {
   margin-bottom: 16px;
 }
 
 // ── 总预算卡 ─────────────────────────────────────────────
 .total-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   padding: 20px 24px;
   background: var(--lz-bg-card);
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
   box-shadow: var(--lz-shadow-sm);
   margin-bottom: 20px;
-}
 
-.total-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.total-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.total-icon {
-  font-size: 26px;
-}
-
-.total-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--lz-text-primary);
-  margin: 0;
-}
-
-.total-hint {
-  font-size: 12px;
-  color: var(--lz-text-secondary);
-  margin: 2px 0 0;
-}
-
-.total-nums {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  font-size: 13px;
-  color: var(--lz-text-secondary);
-  font-variant-numeric: tabular-nums;
-
-  b {
-    color: var(--lz-text-primary);
-    font-size: 15px;
+  // 顶部阈值色条：整张卡的「健康度」一眼可见，不用先去读百分比
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: linear-gradient(90deg, var(--tone, var(--lz-border)) 0%, transparent 78%);
   }
 }
 
-.total-percent {
-  margin-left: 4px;
+.total-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.total-figures {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.total-eyebrow {
+  font-size: 12px;
+  color: var(--lz-text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.total-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.total-spent {
+  @include tabular;
+
+  font-size: 26px;
   font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: var(--tone, var(--lz-text-primary));
+}
+
+.total-of {
+  @include tabular;
+
+  font-size: 15px;
+  color: var(--lz-text-secondary);
 }
 
 .total-unset {
+  font-size: 13px;
+  color: var(--lz-text-secondary);
+  opacity: 0.85;
+}
+
+.total-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.total-remaining {
+  @include tabular;
+
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tone, var(--lz-text-secondary));
+}
+
+// 口径行：百分比在左，预警线刻度与日均可用在右
+.total-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 12px;
-  opacity: 0.8;
+  color: var(--lz-text-secondary);
+}
+
+.total-percent {
+  @include tabular;
+
+  font-weight: 600;
+  color: var(--lz-text-regular);
+}
+
+.total-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.total-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+// 与轨道上的刻度线呼应：告诉用户那道竖线是什么
+.total-key__dash {
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--lz-text-secondary);
+  opacity: 0.7;
+}
+
+.total-daily {
+  @include tabular;
+
+  font-weight: 500;
+  color: var(--lz-text-regular);
 }
 
 // ── 分类预算卡 ───────────────────────────────────────────
@@ -485,6 +661,8 @@ function remainingText(item: BudgetProgress): string {
 }
 
 .budget-card {
+  position: relative;
+  overflow: hidden;
   padding: 16px 18px;
   background: var(--lz-bg-card);
   border: 1px solid var(--lz-border);
@@ -492,15 +670,23 @@ function remainingText(item: BudgetProgress): string {
   box-shadow: var(--lz-shadow-sm);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: box-shadow var(--lz-duration-base) var(--lz-ease-standard);
+  gap: 12px;
+  transition: box-shadow var(--lz-duration-base) var(--lz-ease-standard),
+    transform var(--lz-duration-base) var(--lz-ease-standard);
+
+  // 卡片整体的阈值色靠这条顶部细线表达，头部就不必再给数字上色
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(90deg, var(--tone, var(--lz-border)) 0%, transparent 72%);
+  }
 
   &:hover {
     box-shadow: var(--lz-shadow-md);
-
-    .card-actions {
-      opacity: 1;
-    }
+    // 只做 1px 位移：卡片是信息密度最高的组件，动太多会干扰读数
+    transform: translateY(-1px);
   }
 }
 
@@ -511,7 +697,7 @@ function remainingText(item: BudgetProgress): string {
 }
 
 .card-icon {
-  font-size: 18px;
+  flex-shrink: 0;
 }
 
 .card-name {
@@ -525,10 +711,17 @@ function remainingText(item: BudgetProgress): string {
   white-space: nowrap;
 }
 
-.card-percent {
-  font-size: 14px;
+// 使用率徽标：底色用同色系的浅底，文字用主色 —— 两种主题下都保证 4.5:1
+.card-badge {
+  @include tabular;
+
+  flex-shrink: 0;
+  font-size: 12px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: var(--lz-radius-full);
+  color: var(--tone, var(--lz-text-regular));
+  background: var(--tone-bg, transparent);
 }
 
 .card-nums {
@@ -544,6 +737,7 @@ function remainingText(item: BudgetProgress): string {
 .card-remaining {
   flex-shrink: 0;
   font-weight: 500;
+  color: var(--tone, var(--lz-text-secondary));
 }
 
 // 操作按钮默认半透明，hover 才完全显形 —— 低频操作不抢进度条的视觉
@@ -555,30 +749,49 @@ function remainingText(item: BudgetProgress): string {
   transition: opacity var(--lz-duration-base);
 }
 
+// 触屏没有 hover：这里常显，否则手机上永远点不到编辑/删除
+@media (hover: none) {
+  .card-actions {
+    opacity: 1;
+  }
+}
+
 .add-card {
-  min-height: 120px;
+  min-height: 148px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   border: 1px dashed var(--lz-border);
   border-radius: var(--lz-radius-xl);
   background: transparent;
   color: var(--lz-text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color var(--lz-duration-base), color var(--lz-duration-base);
+  transition: border-color var(--lz-duration-base), color var(--lz-duration-base),
+    background-color var(--lz-duration-base);
 
   &:hover {
     border-color: var(--lz-primary-400);
     color: var(--lz-primary-600);
+    background: var(--lz-primary-50);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--lz-primary-600);
+    outline-offset: 2px;
   }
 }
 
 .add-icon {
   font-size: 22px;
   line-height: 1;
+  transition: transform var(--lz-duration-base) var(--lz-ease-standard);
+}
+
+.add-card:hover .add-icon {
+  transform: scale(1.15);
 }
 
 // ── 弹窗 ─────────────────────────────────────────────────
@@ -607,13 +820,29 @@ function remainingText(item: BudgetProgress): string {
 }
 
 .chart-skeleton {
-  border-radius: var(--lz-radius-lg);
+  border-radius: var(--lz-radius-full);
 }
 
 @media (max-width: 575px) {
   .page-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .total-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .total-foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .total-foot-right {
+    justify-content: flex-start;
   }
 }
 </style>
