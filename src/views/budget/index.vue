@@ -16,6 +16,7 @@ import type { BudgetProgress, BudgetTone } from '@/types/budget'
 import { NButton, NInputNumber, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { deleteBudget, upsertBudget } from '@/api/modules/budget'
+import AnimatedMoney from '@/components/base/animated-money/index.vue'
 import TwemojiIcon from '@/components/business/twemoji-icon/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
@@ -309,7 +310,9 @@ function remainingText(item: BudgetProgress): string {
           <div class="total-figures">
             <span class="total-eyebrow">本月总预算</span>
             <div class="total-main">
-              <span class="total-spent">{{ formatCents(overview.total.spent, { withSymbol: true }) }}</span>
+              <span class="total-spent">
+                <AnimatedMoney :cents="overview.total.spent" />
+              </span>
               <span v-if="overview.total.budget.amount > 0" class="total-of">
                 / {{ formatCents(overview.total.budget.amount, { withSymbol: true }) }}
               </span>
