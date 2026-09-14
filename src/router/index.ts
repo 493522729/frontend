@@ -87,6 +87,9 @@ const routes: RouteRecordRaw[] = [
       title: '可视化大屏',
       icon: 'screen',
       order: 20,
+      // 只保留顶栏「数据大屏」入口（Header/index.vue 的 goScreen），
+      // 不进左侧菜单，故 hidden:true（侧边栏靠 !r.meta.hidden 过滤）。
+      hidden: true,
       requiresAuth: true,
       layout: 'blank',
     },
