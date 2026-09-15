@@ -41,6 +41,12 @@ export interface UserInfo {
   phone?: string
   /** 角色，用于权限控制（P0 后续做菜单权限时会用到） */
   roles: string[]
+  /**
+   * 是否已绑定微信（后端按 User.wxOpenid 是否为空算）。
+   * 设置页据此显示「已绑定 + 解绑入口」还是「未绑定 + 出码入口」（MP-ADR-5）。
+   * 老版本后端没有这个字段 → 视为未绑定。
+   */
+  wxBound?: boolean
 }
 
 /** 更新个人资料入参 */

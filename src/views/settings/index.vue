@@ -90,6 +90,9 @@ async function onSaveIcp() {
   }
 }
 
+// 微信绑定功能已统一收口到「账号设置」页（views/profile + components/WechatBindModal），
+// 这里不再保留绑定/解绑逻辑，避免两处状态不一致。
+
 const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   newPassword: [
@@ -270,6 +273,7 @@ async function onChangePwdSubmit() {
       </NForm>
     </section>
 
+    <!-- 微信绑定入口已统一收口到「账号设置」页（views/profile），这里不再重复 -->
     <section class="setting-card">
       <div class="setting-head">
         <h2 class="setting-title">

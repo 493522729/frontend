@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { UserInfo } from '@/api/modules/user'
 import { NButton, NInput, NModal, useMessage } from 'naive-ui'
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { userApi } from '@/api/modules/user'
+import WechatBindModal from '@/components/WechatBindModal.vue'
 import { useAuthStore } from '@/stores/modules/auth'
 
 /**
@@ -151,10 +152,36 @@ async function onAvatarChange(e: Event) {
   }
 }
 
-// ── 微信账号（P5 微信扫码登录对接后启用）────────────────────
-function bindWechat() {
-  message.info('微信登录功能开发中，敬请期待')
+// ── 微信账号（MP-ADR-5 方案 A：出绑定码 → 小程序扫 → 绑定到当前账号）────
+const wxBound = computed(() => Boolean(user.value?.wxBound))
+
+const showBindModal = ref(false)
+const showUnbindModal = ref(false)
+
+function onWechatAction() {
+  if (wxBound.value)
+    showUnbindModal.value = true
+  else
+    showBindModal.value = true
 }
+
+/** 绑定/解绑成功后刷新用户信息，让「已绑定/未绑定」立刻生效 */
+async function onWechatSuccess() {
+  await auth.refreshProfile()
+}
+
+/**
+ * 跨端兜底：小程序端方案 B（输密码绑定）或另一台设备完成绑定/解绑时，
+ * 网页端没有扫码会话通知，不会主动刷新。回到本标签页时拉一次最新 profile，
+ * 保证「已绑定/未绑定」状态及时同步，避免出现「手机已绑定、网页没变化」。
+ */
+function refreshOnVisible() {
+  if (document.visibilityState === 'visible')
+    void auth.refreshProfile()
+}
+
+onMounted(() => document.addEventListener('visibilitychange', refreshOnVisible))
+onUnmounted(() => document.removeEventListener('visibilitychange', refreshOnVisible))
 
 // ── 退出登录 ─────────────────────────────────────────────
 async function handleLogout() {
@@ -236,10 +263,10 @@ async function handleLogout() {
         <div class="profile-row">
           <div class="row-meta">
             <span class="row-label">微信账号</span>
-            <span class="row-desc">未绑定</span>
+            <span class="row-desc">{{ wxBound ? '已绑定 · 小程序可免密记账' : '未绑定' }}</span>
           </div>
-          <NButton size="small" @click="bindWechat">
-            去绑定
+          <NButton size="small" :type="wxBound ? 'error' : 'primary'" ghost @click="onWechatAction">
+            {{ wxBound ? '解除绑定' : '去绑定' }}
           </NButton>
         </div>
 
@@ -280,6 +307,10 @@ async function handleLogout() {
     >
       <NInput v-model:value="phoneDraft" placeholder="请输入手机号" maxlength="11" />
     </NModal>
+
+    <!-- 微信绑定 / 解绑（MP-ADR-5，与设置页共用同一个弹窗） -->
+    <WechatBindModal v-model:show="showBindModal" mode="bind" @success="onWechatSuccess" />
+    <WechatBindModal v-model:show="showUnbindModal" mode="unbind" @success="onWechatSuccess" />
   </div>
 </template>
 

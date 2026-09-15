@@ -198,3 +198,27 @@ export function pollScanSession(qrId: string): Promise<ScanState> {
 export function cancelScanSession(qrId: string): Promise<void> {
   return WECHAT_SCAN_ENABLED ? cancelScanSessionReal(qrId) : cancelScanSessionMock(qrId)
 }
+
+// ── 微信绑定（MP-ADR-5：方案 A）────────────────────────────────────────
+// 网页端已登录 → 生成「绑定码」→ 小程序扫 → 把该微信的 openid 绑到当前账号。
+// 与「登录码」的区别：登录码是未登录用户扫（拿登录态），绑定码是已登录用户扫（建绑定关系）。
+// 后端用 ticket 首字符区分：l=登录码 / b=绑定码。
+
+/** 创建绑定专用小程序码（需带 Authorization，绑定给当前登录用户） */
+export function createScanBindSession(): Promise<ScanCreateResult> {
+  return http.post<ScanCreateResult>('/auth/scan-bind')
+}
+
+/** 轮询绑定码状态：confirmed 即绑定完成 */
+export function pollScanBindSession(qrId: string): Promise<ScanState> {
+  return http.get<ScanState>(`/auth/scan/${qrId}`)
+}
+
+export function cancelScanBindSession(qrId: string): Promise<void> {
+  return http.post<void>(`/auth/scan/${qrId}/cancel`)
+}
+
+/** 解绑微信（需验密码）。只清 wxOpenid，账本与流水一条不动 */
+export function unbindWechat(password: string): Promise<void> {
+  return http.delete<void>('/user/wx', { data: { password } })
+}
