@@ -76,7 +76,7 @@ async function onUserMenuSelect(key: string | number) {
   <header class="app-header">
     <div class="header-left">
       <button
-        class="icon-btn"
+        class="sidebar-toggle icon-btn"
         :aria-label="appStore.sidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'"
         :title="appStore.sidebarCollapsed ? '展开侧边栏 (⌘B)' : '折叠侧边栏 (⌘B)'"
         @click="appStore.toggleSidebar()"
@@ -409,6 +409,14 @@ async function onUserMenuSelect(key: string | number) {
 
   .user-chip {
     padding: 4px;
+  }
+
+  // 触屏/手机端：侧栏折叠按钮与 ⌘K 快捷键提示都是桌面交互——
+  // 手机没有物理键盘，⌘K 无意义；侧栏在窄屏已自动收成图标条，折叠开关没有存在的场景。
+  // 「记一笔」入口由页面右下角悬浮按钮承担，这里整颗隐藏。
+  .sidebar-toggle,
+  .hotkey-hint {
+    display: none;
   }
 }
 </style>

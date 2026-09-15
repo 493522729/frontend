@@ -19,6 +19,7 @@ import { useDialog, useMessage, useNotification } from 'naive-ui'
 import { computed, getCurrentInstance, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useHotkey } from '@/composables/useHotkey'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
 import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transaction'
 import { useDictStore } from '@/stores/modules/dict'
@@ -28,6 +29,7 @@ import { formatCents } from '@/utils/money'
 import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 import { ensureVxeTable } from './_vxe-bootstrap'
 import FilterPanel from './components/FilterPanel.vue'
+import MobileTxnList from './components/MobileTxnList.vue'
 import { useTransactionList } from './composables/useTransactionList'
 
 // vxe-table 4.x 的 TS 类型对自定义插槽支持不全 —— 官方类型只覆盖内置 slot，
@@ -40,7 +42,22 @@ type VxeGridOptions = VxeGridProps<Transaction> & Record<string, unknown>
 
 // 局部注册 vxe-table 到本页面所在 app
 const app = getCurrentInstance()!.appContext.app as App
-ensureVxeTable(app)
+
+// ── 移动端分流 ──────────────────────────────────────────────
+// 手机 / 触屏设备走 MobileTxnList 卡片列表（vxe 的双击编辑、拖宽列、
+// 批量勾选全是鼠标交互，触屏上不成立 —— 手机上表格直接渲染不出来的根因）。
+// 关键收益：移动端不加载 vxe-table（~700KB chunk），手机首屏轻一大截。
+const isMobile = useIsMobile()
+// ensureVxeTable 幂等（闭包 installed），窄窗口拉宽切回桌面时补注册即可
+if (!isMobile.value)
+  ensureVxeTable(app)
+watch(isMobile, (m) => {
+  if (!m)
+    ensureVxeTable(app)
+})
+
+/** 移动端筛选抽屉开关（FilterPanel 复用，塞进底部抽屉） */
+const mobileFilterOpen = ref(false)
 
 const message = useMessage()
 const notification = useNotification()
@@ -594,8 +611,9 @@ async function onConfirmBatch() {
         </p>
       </div>
       <NSpace>
-        <!-- 行高切换：紧凑 / 标准 / 宽松（PRD §15.2.2） -->
+        <!-- 行高切换：紧凑 / 标准 / 宽松（PRD §15.2.2）；触屏没有「行密度」概念，移动端不显示 -->
         <NSelect
+          v-if="!isMobile"
           v-model:value="rowSize"
           :options="rowSizeOptions"
           size="small"
@@ -612,7 +630,42 @@ async function onConfirmBatch() {
       </NSpace>
     </header>
 
-    <div class="txn-body">
+    <!--
+      移动端：卡片列表 + 底部筛选抽屉。
+      数据层与 PC 版完全同源（同一个 useTransactionList 实例），只换展示层；
+      确认/删除直接复用 PC 版的 confirmRow / onDeleteOne（自带确认弹窗与乐观更新）。
+    -->
+    <template v-if="isMobile">
+      <MobileTxnList
+        :list="list"
+        :loading="loading"
+        :total="total"
+        :page="page"
+        :page-size="pageSize"
+        :filter-applied="filterApplied"
+        @update:page="onPageChange"
+        @confirm="(t: Transaction) => confirmRow(t.id)"
+        @remove="(t: Transaction) => onDeleteOne(t.id)"
+        @open-filter="mobileFilterOpen = true"
+      />
+
+      <!-- 筛选抽屉：FilterPanel 原样复用，只把 240px 侧栏宽度覆盖为满宽 -->
+      <NDrawer v-model:show="mobileFilterOpen" placement="bottom" height="82%">
+        <NDrawerContent title="筛选" closable>
+          <div class="m-drawer-filter">
+            <FilterPanel
+              :filter="filter"
+              :categories="dict.categories"
+              :accounts="dict.accounts"
+              @change="applyFilter"
+              @reset="resetFilter"
+            />
+          </div>
+        </NDrawerContent>
+      </NDrawer>
+    </template>
+
+    <div v-else class="txn-body">
       <FilterPanel
         :filter="filter"
         :categories="dict.categories"
@@ -849,6 +902,14 @@ async function onConfirmBatch() {
 </template>
 
 <style scoped lang="scss">
+// 移动端筛选抽屉：FilterPanel 默认 240px 侧栏宽，在抽屉里改为满宽
+.m-drawer-filter {
+  :deep(.filter-panel) {
+    width: 100%;
+    position: static;
+  }
+}
+
 .txn-page {
   display: flex;
   flex-direction: column;
