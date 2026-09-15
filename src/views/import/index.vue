@@ -14,7 +14,7 @@ import {
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
-import EmptyState from '@/components/business/empty-state/index.vue'
+import TwemojiIcon from '@/components/business/twemoji-icon/index.vue'
 import { useImportStore } from '@/stores/modules/import'
 import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
@@ -58,15 +58,24 @@ const mappingFields: { key: keyof ColumnMapping, label: string, required: boolea
 ]
 
 const fileInput = ref<HTMLInputElement>()
+const isDragging = ref(false)
 
-function onFileChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
+function pick(file: File | undefined | null) {
   if (!file)
     return
   store.loadFile(file).catch((err) => {
     message.error(String(err?.message ?? err))
   })
+}
+
+function onFileChange(e: Event) {
+  pick((e.target as HTMLInputElement).files?.[0])
+  ;(e.target as HTMLInputElement).value = '' // 允许重复选同一文件
+}
+
+function onDrop(e: DragEvent) {
+  isDragging.value = false
+  pick(e.dataTransfer?.files?.[0])
 }
 
 function effectiveCategory(row: ParsedImportTxn): number {
@@ -105,21 +114,32 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
       <NStep title="完成" />
     </NSteps>
 
-    <!-- 上传 -->
-    <EmptyState
+    <!-- 上传：可拖拽的拖放区，点击也能选文件 -->
+    <div
       v-if="step === 'upload'"
-      variant="upload"
-      title="上传银行流水"
-      desc="支持招行等导出的 Excel / CSV，自动去重 + 匹配账户"
-      size="md"
+      class="upload-zone"
+      :class="{ 'is-dragover': isDragging }"
+      role="button"
+      tabindex="0"
+      @click="fileInput?.click()"
+      @keydown.enter.prevent="fileInput?.click()"
+      @dragenter.prevent="isDragging = true"
+      @dragover.prevent="isDragging = true"
+      @dragleave.prevent="isDragging = false"
+      @drop.prevent="onDrop"
     >
-      <template #extra>
-        <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" style="display: none" @change="onFileChange">
-        <NButton type="primary" @click="fileInput?.click()">
-          选择文件
-        </NButton>
-      </template>
-    </EmptyState>
+      <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" style="display: none" @change="onFileChange">
+      <TwemojiIcon name="upload" :size="64" class="upload-art" />
+      <p class="upload-title">
+        拖拽银行流水文件到此处
+      </p>
+      <p class="upload-desc">
+        支持招行等导出的 Excel / CSV，自动去重 + 匹配账户
+      </p>
+      <NButton type="primary" @click.stop="fileInput?.click()">
+        选择文件
+      </NButton>
+    </div>
 
     <!-- 列映射 -->
     <div v-else-if="step === 'mapping'" class="card">
@@ -275,6 +295,55 @@ function onMappingChange(field: keyof ColumnMapping, val: string | number | null
   border: 1px solid var(--lz-border);
   border-radius: var(--lz-radius-xl);
   padding: 20px;
+}
+
+// 上传拖放区：虚线边框，拖拽悬停时高亮（晨雾蓝描边 + 浅填充）
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--lz-bg-card);
+  border: 2px dashed var(--lz-border);
+  border-radius: var(--lz-radius-xl);
+  cursor: pointer;
+  transition: border-color var(--lz-duration-base), background-color var(--lz-duration-base);
+
+  &:hover {
+    border-color: var(--lz-primary-400);
+  }
+
+  &.is-dragover {
+    border-color: var(--lz-primary-500);
+    background: rgb(var(--lz-primary-rgb) / 8%);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--lz-primary-400);
+    outline-offset: 2px;
+  }
+}
+
+.upload-art {
+  margin-bottom: 4px;
+}
+
+.upload-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--lz-text-primary);
+}
+
+.upload-desc {
+  margin: 0 0 8px;
+  max-width: 360px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lz-text-secondary);
 }
 
 .done-card {

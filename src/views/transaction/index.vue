@@ -796,7 +796,7 @@ async function onConfirmBatch() {
               <!-- 来源 + 入账状态 -->
               <template #source_cell="{ row }">
                 <NTag size="small" :bordered="false" type="default">
-                  {{ TRANSACTION_SOURCE_META[(row as Transaction).source].label }}
+                  {{ TRANSACTION_SOURCE_META[(row as Transaction).source ?? 'manual']?.label ?? '—' }}
                 </NTag>
                 <NTag
                   v-if="(row as Transaction).status === 'pending'"

@@ -16,6 +16,9 @@ import { useDictStore } from '@/stores/modules/dict'
 import { useSettingsStore } from '@/stores/modules/settings'
 import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
+/** n-scrollbar 内容层样式：内容不足时也撑满容器，保证空态能垂直居中 */
+const catListContentStyle = { display: 'flex', flexDirection: 'column', minHeight: '100%' } as const
+
 /**
  * 分类管理页（Now 清单 #1，PRD §15.2.1）
  * ====================================================================
@@ -318,60 +321,62 @@ watch(() => form.type, () => {
             + 新增
           </NButton>
         </div>
-        <ul class="cat-list">
-          <template v-for="root in expenseRoots" :key="root.id">
-            <li
-              class="cat-row"
-              :class="{ 'dragging': dragItem?.id === root.id, 'drop-target': dragOverId === root.id }"
-              draggable="true"
-              @dragstart="onDragStart($event, root)"
-              @dragover="onDragOver($event, root)"
-              @drop="onDrop($event, root)"
-              @dragend="onDragEnd"
-            >
-              <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
-              <span class="cat-name">{{ root.name }}</span>
-              <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
-              <span class="cat-actions">
-                <NButton size="tiny" quaternary @click="openEdit(root)">编辑</NButton>
-                <NButton size="tiny" quaternary type="error" @click="openDelete(root)">删除</NButton>
-              </span>
+        <NScrollbar class="cat-list" :content-style="catListContentStyle">
+          <ul class="cat-list-inner">
+            <template v-for="root in expenseRoots" :key="root.id">
+              <li
+                class="cat-row"
+                :class="{ 'dragging': dragItem?.id === root.id, 'drop-target': dragOverId === root.id }"
+                draggable="true"
+                @dragstart="onDragStart($event, root)"
+                @dragover="onDragOver($event, root)"
+                @drop="onDrop($event, root)"
+                @dragend="onDragEnd"
+              >
+                <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
+                <span class="cat-name">{{ root.name }}</span>
+                <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
+                <span class="cat-actions">
+                  <NButton size="tiny" quaternary @click="openEdit(root)">编辑</NButton>
+                  <NButton size="tiny" quaternary type="error" @click="openDelete(root)">删除</NButton>
+                </span>
+              </li>
+              <li
+                v-for="child in childrenOf(root.id)"
+                :key="child.id"
+                class="cat-row cat-row--child"
+                :class="{ 'dragging': dragItem?.id === child.id, 'drop-target': dragOverId === child.id }"
+                draggable="true"
+                @dragstart="onDragStart($event, child)"
+                @dragover="onDragOver($event, child)"
+                @drop="onDrop($event, child)"
+                @dragend="onDragEnd"
+              >
+                <span class="child-connector" />
+                <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
+                  <TwemojiIcon :emoji="child.icon" :size="18" />
+                </span>
+                <span class="cat-name">{{ child.name }}</span>
+                <span class="cat-actions">
+                  <NButton size="tiny" quaternary @click="openEdit(child)">编辑</NButton>
+                  <NButton size="tiny" quaternary type="error" @click="openDelete(child)">删除</NButton>
+                </span>
+              </li>
+            </template>
+            <li v-if="expenseRoots.length === 0" class="cat-empty">
+              <EmptyState
+                variant="ledger"
+                size="sm"
+                title="暂无支出分类"
+                desc="点击右上角「+ 新增」创建你的第一个分类"
+              >
+                <NButton size="small" tertiary type="primary" @click="openCreate('expense')">
+                  + 新增
+                </NButton>
+              </EmptyState>
             </li>
-            <li
-              v-for="child in childrenOf(root.id)"
-              :key="child.id"
-              class="cat-row cat-row--child"
-              :class="{ 'dragging': dragItem?.id === child.id, 'drop-target': dragOverId === child.id }"
-              draggable="true"
-              @dragstart="onDragStart($event, child)"
-              @dragover="onDragOver($event, child)"
-              @drop="onDrop($event, child)"
-              @dragend="onDragEnd"
-            >
-              <span class="child-connector" />
-              <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
-                <TwemojiIcon :emoji="child.icon" :size="18" />
-              </span>
-              <span class="cat-name">{{ child.name }}</span>
-              <span class="cat-actions">
-                <NButton size="tiny" quaternary @click="openEdit(child)">编辑</NButton>
-                <NButton size="tiny" quaternary type="error" @click="openDelete(child)">删除</NButton>
-              </span>
-            </li>
-          </template>
-          <li v-if="expenseRoots.length === 0" class="cat-empty">
-            <EmptyState
-              variant="ledger"
-              size="sm"
-              title="暂无支出分类"
-              desc="点击右上角「+ 新增」创建你的第一个分类"
-            >
-              <NButton size="small" tertiary type="primary" @click="openCreate('expense')">
-                + 新增
-              </NButton>
-            </EmptyState>
-          </li>
-        </ul>
+          </ul>
+        </NScrollbar>
       </section>
 
       <!-- 收入 -->
@@ -382,60 +387,62 @@ watch(() => form.type, () => {
             + 新增
           </NButton>
         </div>
-        <ul class="cat-list">
-          <template v-for="root in incomeRoots" :key="root.id">
-            <li
-              class="cat-row"
-              :class="{ 'dragging': dragItem?.id === root.id, 'drop-target': dragOverId === root.id }"
-              draggable="true"
-              @dragstart="onDragStart($event, root)"
-              @dragover="onDragOver($event, root)"
-              @drop="onDrop($event, root)"
-              @dragend="onDragEnd"
-            >
-              <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
-              <span class="cat-name">{{ root.name }}</span>
-              <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
-              <span class="cat-actions">
-                <NButton size="tiny" quaternary @click="openEdit(root)">编辑</NButton>
-                <NButton size="tiny" quaternary type="error" @click="openDelete(root)">删除</NButton>
-              </span>
+        <NScrollbar class="cat-list" :content-style="catListContentStyle">
+          <ul class="cat-list-inner">
+            <template v-for="root in incomeRoots" :key="root.id">
+              <li
+                class="cat-row"
+                :class="{ 'dragging': dragItem?.id === root.id, 'drop-target': dragOverId === root.id }"
+                draggable="true"
+                @dragstart="onDragStart($event, root)"
+                @dragover="onDragOver($event, root)"
+                @drop="onDrop($event, root)"
+                @dragend="onDragEnd"
+              >
+                <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
+                <span class="cat-name">{{ root.name }}</span>
+                <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
+                <span class="cat-actions">
+                  <NButton size="tiny" quaternary @click="openEdit(root)">编辑</NButton>
+                  <NButton size="tiny" quaternary type="error" @click="openDelete(root)">删除</NButton>
+                </span>
+              </li>
+              <li
+                v-for="child in childrenOf(root.id)"
+                :key="child.id"
+                class="cat-row cat-row--child"
+                :class="{ 'dragging': dragItem?.id === child.id, 'drop-target': dragOverId === child.id }"
+                draggable="true"
+                @dragstart="onDragStart($event, child)"
+                @dragover="onDragOver($event, child)"
+                @drop="onDrop($event, child)"
+                @dragend="onDragEnd"
+              >
+                <span class="child-connector" />
+                <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
+                  <TwemojiIcon :emoji="child.icon" :size="18" />
+                </span>
+                <span class="cat-name">{{ child.name }}</span>
+                <span class="cat-actions">
+                  <NButton size="tiny" quaternary @click="openEdit(child)">编辑</NButton>
+                  <NButton size="tiny" quaternary type="error" @click="openDelete(child)">删除</NButton>
+                </span>
+              </li>
+            </template>
+            <li v-if="incomeRoots.length === 0" class="cat-empty">
+              <EmptyState
+                variant="ledger"
+                size="sm"
+                title="暂无收入分类"
+                desc="点击右上角「+ 新增」创建你的第一个分类"
+              >
+                <NButton size="small" tertiary type="primary" @click="openCreate('income')">
+                  + 新增
+                </NButton>
+              </EmptyState>
             </li>
-            <li
-              v-for="child in childrenOf(root.id)"
-              :key="child.id"
-              class="cat-row cat-row--child"
-              :class="{ 'dragging': dragItem?.id === child.id, 'drop-target': dragOverId === child.id }"
-              draggable="true"
-              @dragstart="onDragStart($event, child)"
-              @dragover="onDragOver($event, child)"
-              @drop="onDrop($event, child)"
-              @dragend="onDragEnd"
-            >
-              <span class="child-connector" />
-              <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
-                <TwemojiIcon :emoji="child.icon" :size="18" />
-              </span>
-              <span class="cat-name">{{ child.name }}</span>
-              <span class="cat-actions">
-                <NButton size="tiny" quaternary @click="openEdit(child)">编辑</NButton>
-                <NButton size="tiny" quaternary type="error" @click="openDelete(child)">删除</NButton>
-              </span>
-            </li>
-          </template>
-          <li v-if="incomeRoots.length === 0" class="cat-empty">
-            <EmptyState
-              variant="ledger"
-              size="sm"
-              title="暂无收入分类"
-              desc="点击右上角「+ 新增」创建你的第一个分类"
-            >
-              <NButton size="small" tertiary type="primary" @click="openCreate('income')">
-                + 新增
-              </NButton>
-            </EmptyState>
-          </li>
-        </ul>
+          </ul>
+        </NScrollbar>
       </section>
     </div>
 
@@ -647,16 +654,20 @@ watch(() => form.type, () => {
   border-radius: var(--lz-radius-full);
 }
 
+// 悬浮式滚动容器（n-scrollbar）：滚动/hover 时才出现滚动条，不再常驻
 .cat-list {
+  flex: 1; // 撑满 cat-group 剩余高度
+  min-height: 0; // n-scrollbar 需要确定高度才能算出溢出（同侧边栏的坑）
+}
+
+.cat-list-inner {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1; // 撑满 cat-group 剩余高度
-  min-height: 0;
-  overflow-y: auto; // 分类多时盒子内部滚动，不撑高页面
+  flex: 1; // 撑满内容层，空态才能垂直居中
 }
 
 // 空态：占满分类列表高度并垂直居中（仅当无分类时渲染）

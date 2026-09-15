@@ -39,14 +39,32 @@ ensureECharts()
 
 /** 大屏专用深色色板（不跟主题，理由见文件头第 1 条） */
 const SCREEN = {
-  text: '#e6eefb',
-  textSub: '#8fa8c8',
-  grid: 'rgba(148, 196, 234, 0.12)',
-  income: '#34d399',
-  expense: '#f87171',
-  primary: '#5fa5de',
-  primaryLight: '#94c4ea',
+  text: '#e8f1ff',
+  textSub: '#8fb0d6',
+  grid: 'rgba(120, 170, 230, 0.12)',
+  income: '#34e0a1',
+  expense: '#ff6b81',
+  primary: '#4ea8ff',
+  primaryLight: '#9ecbff',
+  warn: '#ffb454',
+  purple: '#a78bfa',
+  cyan: '#38e0d0',
 } as const
+
+/** ECharts 竖向渐变（柱体/面积用） */
+function vgrad(c1: string, c2: string) {
+  return {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: c1 },
+      { offset: 1, color: c2 },
+    ],
+  }
+}
 
 const book = useBookStore()
 const accountStore = useAccountStore()
@@ -119,10 +137,10 @@ const kpis = computed(() => {
   if (!ov)
     return []
   return [
-    { label: '本月收入', value: ov.income, color: SCREEN.income, mom: ov.incomeMoM },
-    { label: '本月支出', value: ov.expense, color: SCREEN.expense, mom: ov.expenseMoM },
-    { label: '本月结余', value: ov.balance, color: SCREEN.primaryLight, mom: null },
-    { label: '净资产', value: ov.netAssets, color: SCREEN.primary, mom: null },
+    { label: '本月收入', value: ov.income, color: SCREEN.income, icon: '💰', mom: ov.incomeMoM },
+    { label: '本月支出', value: ov.expense, color: SCREEN.expense, icon: '💳', mom: ov.expenseMoM },
+    { label: '本月结余', value: ov.balance, color: SCREEN.primaryLight, icon: '📊', mom: null },
+    { label: '净资产', value: ov.netAssets, color: SCREEN.primary, icon: '🏦', mom: null },
   ]
 })
 
@@ -135,6 +153,11 @@ const accountRows = computed(() => {
     .slice(0, 6)
     .map(b => ({ name: nameOf(b.accountId), balance: b.balance }))
 })
+
+/** 饼图中心合计（DOM 叠加层，避免额外注册 TitleComponent） */
+const pieTotal = computed(() =>
+  (overview.value?.categories ?? []).reduce((sum, c) => sum + c.amount, 0),
+)
 
 type TrendOption = ComposeOption<
   BarSeriesOption | LineSeriesOption | TooltipComponentOption
@@ -149,28 +172,37 @@ const axisBase = {
   axisLabel: { color: SCREEN.textSub, fontSize: 13 },
 }
 
+const tooltipBase = {
+  backgroundColor: 'rgba(8, 18, 36, 0.92)',
+  borderColor: 'rgba(120, 170, 230, 0.28)',
+  borderWidth: 1,
+  padding: [10, 14],
+  textStyle: { color: SCREEN.text, fontSize: 13 },
+  extraCssText: 'box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45); border-radius: 10px;',
+}
+
 const trendOption = computed<TrendOption>(() => {
   const pts: TrendPoint[] = overview.value?.trend ?? []
   return {
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(11, 22, 40, 0.92)',
-      borderColor: SCREEN.grid,
-      textStyle: { color: SCREEN.text, fontSize: 13 },
-      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(148,196,234,0.08)' } },
+      ...tooltipBase,
+      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(120,170,230,0.08)' } },
     },
     legend: {
-      top: 4,
-      right: 8,
-      itemWidth: 16,
+      top: 6,
+      right: 12,
+      itemWidth: 14,
       itemHeight: 8,
+      itemGap: 18,
       textStyle: { color: SCREEN.textSub, fontSize: 13 },
     },
-    grid: { left: 8, right: 16, top: 48, bottom: 4, containLabel: true },
+    grid: { left: 8, right: 18, top: 52, bottom: 4, containLabel: true },
     xAxis: {
       type: 'category',
       data: pts.map(p => `${Number(p.month.slice(5))}月`),
       ...axisBase,
+      axisLine: { lineStyle: { color: SCREEN.grid } },
     },
     yAxis: {
       type: 'value',
@@ -186,24 +218,50 @@ const trendOption = computed<TrendOption>(() => {
       {
         name: '收入',
         type: 'bar',
-        barWidth: 18,
-        itemStyle: { color: SCREEN.income, borderRadius: [4, 4, 0, 0] },
+        barWidth: 16,
+        barGap: '30%',
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: vgrad(SCREEN.income, 'rgba(52, 224, 161, 0.45)'),
+          shadowColor: 'rgba(52, 224, 161, 0.45)',
+          shadowBlur: 10,
+        },
         data: pts.map(p => p.income / 100),
       },
       {
         name: '支出',
         type: 'bar',
-        barWidth: 18,
-        itemStyle: { color: SCREEN.expense, borderRadius: [4, 4, 0, 0] },
+        barWidth: 16,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: vgrad(SCREEN.expense, 'rgba(255, 107, 129, 0.45)'),
+          shadowColor: 'rgba(255, 107, 129, 0.45)',
+          shadowBlur: 10,
+        },
         data: pts.map(p => p.expense / 100),
       },
       {
         name: '结余',
         type: 'line',
         smooth: true,
-        symbolSize: 7,
-        lineStyle: { width: 3, color: SCREEN.primaryLight },
-        itemStyle: { color: SCREEN.primaryLight },
+        symbol: 'circle',
+        symbolSize: 8,
+        showSymbol: true,
+        lineStyle: { width: 3, color: SCREEN.primaryLight, shadowColor: 'rgba(158, 203, 255, 0.6)', shadowBlur: 12 },
+        itemStyle: { color: SCREEN.primaryLight, borderColor: '#fff', borderWidth: 1 },
+        areaStyle: {
+          color: {
+            type: 'linear' as const,
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(158, 203, 255, 0.30)' },
+              { offset: 1, color: 'rgba(158, 203, 255, 0)' },
+            ],
+          },
+        },
         data: pts.map(p => (p.income - p.expense) / 100),
       },
     ],
@@ -215,38 +273,46 @@ const pieOption = computed<PieOption>(() => {
   return {
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(11, 22, 40, 0.92)',
-      borderColor: SCREEN.grid,
-      textStyle: { color: SCREEN.text, fontSize: 13 },
+      ...tooltipBase,
       formatter: (raw: unknown) => {
         const p = raw as { name: string, value: number, percent: number }
         return `${p.name}<br/>${formatCents(p.value * 100, { withSymbol: true })} · ${p.percent}%`
       },
     },
     legend: {
-      bottom: 0,
+      bottom: 4,
       left: 'center',
-      itemWidth: 12,
-      itemHeight: 12,
+      icon: 'circle',
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 14,
       textStyle: { color: SCREEN.textSub, fontSize: 13 },
     },
     series: [
       {
         type: 'pie',
-        radius: ['48%', '72%'],
-        center: ['50%', '44%'],
+        radius: ['54%', '76%'],
+        center: ['50%', '46%'],
         avoidLabelOverlap: true,
         itemStyle: {
-          borderColor: '#0b1628',
+          borderColor: '#0a1426',
           borderWidth: 3,
+          shadowColor: 'rgba(0, 0, 0, 0.35)',
+          shadowBlur: 8,
         },
-        label: { color: SCREEN.textSub, fontSize: 13, formatter: '{b}\n{d}%' },
-        labelLine: { lineStyle: { color: SCREEN.grid }, length: 12, length2: 12 },
-        data: cats.map(c => ({
-          name: c.name,
-          value: c.amount / 100,
-          itemStyle: { color: c.color },
-        })),
+        label: { color: SCREEN.textSub, fontSize: 12, formatter: '{b}\n{d}%' },
+        labelLine: { lineStyle: { color: SCREEN.grid }, length: 10, length2: 12 },
+        data: cats.map((c, i) => {
+          // 用一组协调的强调色循环，保证环图层次清晰
+          const palette = [SCREEN.primary, SCREEN.income, SCREEN.warn, SCREEN.purple, SCREEN.cyan, SCREEN.expense]
+          // 索引访问在 noUncheckedIndexedAccess 下是 string|undefined，兜底到主色，避免 TS2345
+          const base = c.color || palette[i % palette.length] || SCREEN.primary
+          return {
+            name: c.name,
+            value: c.amount / 100,
+            itemStyle: { color: vgrad(base, 'rgba(120,170,230,0.25)') },
+          }
+        }),
       },
     ],
   }
@@ -258,17 +324,15 @@ const accountOption = computed<BarOption>(() => {
   return {
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(11, 22, 40, 0.92)',
-      borderColor: SCREEN.grid,
-      textStyle: { color: SCREEN.text, fontSize: 13 },
-      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(148,196,234,0.08)' } },
+      ...tooltipBase,
+      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(120,170,230,0.08)' } },
       formatter: (raw: unknown) => {
         const arr = raw as { name: string, value: number }[]
         const it = arr[0]
         return it ? `${it.name}<br/>${formatCents(it.value * 100, { withSymbol: true })}` : ''
       },
     },
-    grid: { left: 8, right: 60, top: 12, bottom: 4, containLabel: true },
+    grid: { left: 8, right: 72, top: 12, bottom: 4, containLabel: true },
     xAxis: { type: 'value', max: max / 100, show: false },
     yAxis: {
       type: 'category',
@@ -282,16 +346,19 @@ const accountOption = computed<BarOption>(() => {
         type: 'bar',
         barWidth: 14,
         showBackground: true,
-        backgroundStyle: { color: 'rgba(148,196,234,0.08)', borderRadius: 7 },
-        itemStyle: { color: SCREEN.primary, borderRadius: 7 },
+        backgroundStyle: { color: 'rgba(120,170,230,0.08)', borderRadius: 7 },
+        itemStyle: {
+          borderRadius: 7,
+          color: vgrad(SCREEN.primary, SCREEN.cyan),
+          shadowColor: 'rgba(78, 168, 255, 0.5)',
+          shadowBlur: 10,
+        },
         label: {
           show: true,
           position: 'right',
           color: SCREEN.text,
           fontSize: 13,
           fontFamily: 'var(--lz-font-num)',
-          // 参数写成 `{ value?: unknown }` 而不是具体数字类型：ECharts 回调传入的
-          // value 是 string | number | Date | … | null 的联合，标窄了会类型不兼容
           formatter: (p: { value?: unknown }) =>
             formatCents(Number(p.value ?? 0) * 100, { withSymbol: true }),
         },
@@ -316,10 +383,22 @@ function amountColor(t: Transaction) {
 <template>
   <div class="screen-root">
     <div class="screen-canvas" :style="{ transform: `translate(-50%, -50%) scale(${scale})` }">
+      <!-- 四角装饰框 -->
+      <span class="corner corner--tl" />
+      <span class="corner corner--tr" />
+      <span class="corner corner--bl" />
+      <span class="corner corner--br" />
+
       <header class="screen-head">
         <div class="head-side">
-          <span class="dot" />
-          <span class="brand">简账</span>
+          <span class="brand-mark">
+            <span class="brand-glow" />
+            <span class="brand-logo">简</span>
+          </span>
+          <div class="brand-text">
+            <span class="brand">简账 · 财务中枢</span>
+            <span class="brand-sub">FINANCE COMMAND CENTER</span>
+          </div>
         </div>
 
         <h1 class="head-title">
@@ -340,32 +419,41 @@ function amountColor(t: Transaction) {
       <main class="screen-body">
         <!-- 左：4 张 KPI -->
         <section class="col col--left">
-          <article v-for="k in kpis" :key="k.label" class="kpi">
-            <p class="kpi-label">
-              {{ k.label }}
-            </p>
-            <p class="kpi-value" :style="{ color: k.color }">
-              {{ formatCents(k.value, { withSymbol: true }) }}
-            </p>
-            <p v-if="k.mom !== null" class="kpi-mom" :class="k.mom >= 0 ? 'up' : 'down'">
-              环比 {{ k.mom >= 0 ? '+' : '' }}{{ k.mom }}%
-            </p>
+          <article
+            v-for="(k, i) in kpis"
+            :key="k.label"
+            class="kpi rise"
+            :style="{ '--d': `${i * 0.08}s` }"
+          >
+            <span class="kpi-icon">{{ k.icon }}</span>
+            <div class="kpi-body">
+              <p class="kpi-label">
+                {{ k.label }}
+              </p>
+              <p class="kpi-value" :style="{ color: k.color }">
+                {{ formatCents(k.value, { withSymbol: true }) }}
+              </p>
+              <p v-if="k.mom !== null" class="kpi-mom" :class="k.mom >= 0 ? 'up' : 'down'">
+                <span class="mom-arrow">{{ k.mom >= 0 ? '▲' : '▼' }}</span>
+                环比 {{ k.mom >= 0 ? '+' : '' }}{{ k.mom }}%
+              </p>
+            </div>
           </article>
           <p v-if="!kpis.length" class="placeholder">
-            加载中…
+            数据加载中…
           </p>
         </section>
 
         <!-- 中：趋势 + 最近流水 -->
         <section class="col col--center">
-          <div class="panel panel--trend">
+          <div class="panel panel--trend rise" style="--d: 0.12s">
             <h2 class="panel-title">
               近 6 月收支趋势
             </h2>
             <VChart class="chart" :option="trendOption" />
           </div>
 
-          <div class="panel panel--recent">
+          <div class="panel panel--recent rise" style="--d: 0.2s">
             <h2 class="panel-title">
               最近流水
             </h2>
@@ -383,14 +471,20 @@ function amountColor(t: Transaction) {
 
         <!-- 右：分类环图 + 账户排行 -->
         <section class="col col--right">
-          <div class="panel panel--pie">
+          <div class="panel panel--pie rise" style="--d: 0.16s">
             <h2 class="panel-title">
               支出分类占比
             </h2>
-            <VChart class="chart" :option="pieOption" />
+            <div class="chart-wrap">
+              <VChart class="chart" :option="pieOption" />
+              <div class="pie-center">
+                <span class="pie-center-value">{{ formatCents(pieTotal, { withSymbol: true }) }}</span>
+                <span class="pie-center-label">支出合计</span>
+              </div>
+            </div>
           </div>
 
-          <div class="panel panel--account">
+          <div class="panel panel--account rise" style="--d: 0.24s">
             <h2 class="panel-title">
               账户余额排行
             </h2>
@@ -408,7 +502,7 @@ function amountColor(t: Transaction) {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: #060d1a;
+  background: #050b18;
 }
 
 .screen-canvas {
@@ -423,62 +517,127 @@ function amountColor(t: Transaction) {
   height: 1080px;
   display: flex;
   flex-direction: column;
-  padding: 20px 24px 24px;
+  padding: 22px 30px 26px;
   transform-origin: center center;
-  background:
-    radial-gradient(ellipse at 50% -10%, rgb(59 135 206 / 22%), transparent 55%),
-    linear-gradient(180deg, #0b1628 0%, #060d1a 100%);
-  color: #e6eefb;
+  color: #e8f1ff;
+  /* 多层背景：细网格 + 顶部光晕 + 纵向渐变 + 暗角 */
+  background-color: #060d1a;
+  background-image:
+    linear-gradient(rgba(120, 170, 230, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 170, 230, 0.045) 1px, transparent 1px),
+    radial-gradient(ellipse 70% 55% at 50% -8%, rgb(78 168 255 / 26%), transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 118%, rgb(167 139 250 / 14%), transparent 55%),
+    linear-gradient(180deg, #0a1730 0%, #060d1a 100%);
+  background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%, 100% 100%;
 }
 
-/* ─── 头部 ─────────────────────────────────────────────── */
+/* ─── 四角装饰框 ─────────────────────────────────────── */
+.corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  pointer-events: none;
+  border-color: rgb(78 168 255 / 70%);
+  border-style: solid;
+  border-width: 0;
+
+  &--tl { top: 10px; left: 10px; border-top-width: 2px; border-left-width: 2px; }
+  &--tr { top: 10px; right: 10px; border-top-width: 2px; border-right-width: 2px; }
+  &--bl { bottom: 10px; left: 10px; border-bottom-width: 2px; border-left-width: 2px; }
+  &--br { bottom: 10px; right: 10px; border-bottom-width: 2px; border-right-width: 2px; }
+}
+
+/* ─── 头部 ─────────────────────────────────────────── */
 .screen-head {
   position: relative;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  height: 84px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid rgb(148 196 234 / 14%);
-}
+  height: 86px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgb(120 170 230 / 16%);
 
-.head-title {
-  margin: 0;
-  font-size: 38px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1.5;
-  padding: 0.15em 0.2em;
-  background: linear-gradient(180deg, #ffffff 0%, #94c4ea 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  &::after {
+    /* 头部分隔线中央的菱形装饰 */
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    width: 9px;
+    height: 9px;
+    transform: translateX(-50%) rotate(45deg);
+    background: #4ea8ff;
+    box-shadow: 0 0 12px 2px rgb(78 168 255 / 70%);
+  }
 }
 
 .head-side {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  color: #8fa8c8;
-  letter-spacing: 0.06em;
+  gap: 12px;
 
   &--right {
     justify-content: flex-end;
   }
 }
 
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #5fa5de;
-  box-shadow: 0 0 12px 2px rgb(95 165 222 / 60%);
+.brand-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #4ea8ff, #a78bfa);
+  box-shadow: 0 6px 18px rgb(78 168 255 / 40%);
+}
+
+.brand-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / 60%), transparent 55%);
+}
+
+.brand-logo {
+  position: relative;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
 }
 
 .brand {
   font-size: 17px;
-  color: #cfe1f6;
+  font-weight: 600;
+  color: #dbe9ff;
+  letter-spacing: 0.04em;
+}
+
+.brand-sub {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: #6f8cb5;
+}
+
+.head-title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  line-height: 1.4;
+  padding: 0.12em 0.3em;
+  background: linear-gradient(180deg, #ffffff 0%, #9ecbff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 10px rgb(78 168 255 / 35%));
 }
 
 .clock-text {
@@ -491,45 +650,49 @@ function amountColor(t: Transaction) {
 .clock {
   font-family: var(--lz-font-num);
   font-variant-numeric: tabular-nums;
-  font-size: 26px;
-  color: #e6eefb;
+  font-size: 28px;
+  font-weight: 700;
+  color: #e8f1ff;
+  text-shadow: 0 0 14px rgb(78 168 255 / 35%);
 }
 
 .today {
   font-size: 13px;
-  color: #8fa8c8;
+  color: #8fb0d6;
 }
 
 .exit-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: 20px;
-  padding: 7px 14px;
+  margin-left: 22px;
+  padding: 8px 15px;
   font-size: 14px;
   color: #cfe1f6;
-  background: rgb(148 196 234 / 8%);
-  border: 1px solid rgb(148 196 234 / 22%);
-  border-radius: 8px;
+  background: rgb(120 170 230 / 10%);
+  border: 1px solid rgb(120 170 230 / 24%);
+  border-radius: 9px;
   cursor: pointer;
   @include transition-paint;
 
   &:hover {
     color: #fff;
-    background: rgb(95 165 222 / 28%);
+    background: rgb(78 168 255 / 30%);
+    border-color: rgb(78 168 255 / 55%);
+    box-shadow: 0 0 16px rgb(78 168 255 / 30%);
   }
 
   kbd {
-    padding: 1px 5px;
+    padding: 1px 6px;
     font-family: var(--lz-font-num);
     font-size: 11px;
-    background: rgb(0 0 0 / 25%);
-    border: 1px solid rgb(148 196 234 / 25%);
+    background: rgb(0 0 0 / 28%);
+    border: 1px solid rgb(120 170 230 / 28%);
     border-radius: 4px;
   }
 }
 
-/* ─── 主体三栏 ─────────────────────────────────────────── */
+/* ─── 主体三栏 ─────────────────────────────────────── */
 .screen-body {
   flex: 1;
   display: grid;
@@ -549,73 +712,132 @@ function amountColor(t: Transaction) {
 .kpi {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 20px 24px;
-  background: rgb(148 196 234 / 6%);
-  border: 1px solid rgb(148 196 234 / 16%);
-  border-radius: 12px;
-  border-left: 3px solid #5fa5de;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+  background:
+    linear-gradient(135deg, rgb(120 170 230 / 10%), rgb(120 170 230 / 3%));
+  border: 1px solid rgb(120 170 230 / 16%);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 6px 18px rgb(0 0 0 / 22%);
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12%;
+    bottom: 12%;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #4ea8ff, #a78bfa);
+  }
+}
+
+.kpi-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  font-size: 26px;
+  border-radius: 14px;
+  background: rgb(120 170 230 / 10%);
+  border: 1px solid rgb(120 170 230 / 20%);
+}
+
+.kpi-body {
+  min-width: 0;
 }
 
 .kpi-label {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   font-size: 15px;
-  color: #8fa8c8;
-  letter-spacing: 0.08em;
+  color: #8fb0d6;
+  letter-spacing: 0.06em;
 }
 
 .kpi-value {
   margin: 0;
   font-family: var(--lz-font-num);
   font-variant-numeric: tabular-nums;
-  font-size: 40px;
-  font-weight: 700;
+  font-size: 38px;
+  font-weight: 800;
   line-height: 1.1;
+  text-shadow: 0 0 18px currentColor;
+  opacity: 0.96;
 }
 
 .kpi-mom {
   margin: 6px 0 0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 
-  &.up { color: #34d399; }
-  &.down { color: #f87171; }
+  &.up { color: #34e0a1; }
+  &.down { color: #ff6b81; }
+
+  .mom-arrow {
+    font-size: 10px;
+  }
 }
 
 .placeholder {
   margin: auto;
-  color: #8fa8c8;
+  color: #8fb0d6;
 }
 
-/* 面板 */
+/* 面板（玻璃质感 + 四角装饰） */
 .panel {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 16px 18px;
-  background: rgb(148 196 234 / 5%);
-  border: 1px solid rgb(148 196 234 / 14%);
-  border-radius: 12px;
+  padding: 16px 18px 14px;
+  background: rgb(14 26 48 / 55%);
+  border: 1px solid rgb(120 170 230 / 16%);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 8px 24px rgb(0 0 0 / 26%);
+  backdrop-filter: blur(6px);
   min-height: 0;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    border-color: rgb(78 168 255 / 80%);
+    border-style: solid;
+    border-width: 0;
+  }
+
+  &::before { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
+  &::after { right: -1px; bottom: -1px; border-right-width: 2px; border-bottom-width: 2px; }
 }
 
 .panel-title {
-  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  margin: 0 0 10px;
   font-size: 17px;
   font-weight: 600;
-  color: #cfe1f6;
-  letter-spacing: 0.06em;
+  color: #dbe9ff;
+  letter-spacing: 0.05em;
 
   &::before {
     content: '';
     display: inline-block;
     width: 4px;
-    height: 15px;
-    margin-right: 8px;
-    vertical-align: -2px;
+    height: 16px;
+    margin-right: 9px;
     border-radius: 2px;
-    background: #5fa5de;
+    background: linear-gradient(180deg, #4ea8ff, #a78bfa);
+    box-shadow: 0 0 8px rgb(78 168 255 / 60%);
   }
 }
 
@@ -623,6 +845,39 @@ function amountColor(t: Transaction) {
   flex: 1;
   width: 100%;
   min-height: 0;
+}
+
+.chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.pie-center {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+
+  &-value {
+    font-family: var(--lz-font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: 24px;
+    font-weight: 800;
+    color: #e8f1ff;
+    text-shadow: 0 0 16px rgb(78 168 255 / 40%);
+  }
+
+  &-label {
+    margin-top: 2px;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: #8fb0d6;
+  }
 }
 
 .panel--trend { flex: 1.15; }
@@ -635,13 +890,16 @@ function amountColor(t: Transaction) {
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  /* 上下渐隐遮罩，让滚动更柔和 */
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
 }
 
 .marquee-list {
   margin: 0;
   padding: 0;
   list-style: none;
-  animation: roll 24s linear infinite;
+  animation: roll 26s linear infinite;
 
   &:hover {
     animation-play-state: paused;
@@ -658,22 +916,27 @@ function amountColor(t: Transaction) {
   grid-template-columns: 96px 1fr auto;
   gap: 12px;
   align-items: center;
-  padding: 9px 8px;
-  border-bottom: 1px dashed rgb(148 196 234 / 10%);
+  padding: 9px 10px;
+  border-bottom: 1px dashed rgb(120 170 230 / 10%);
   font-size: 15px;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: rgb(120 170 230 / 6%);
+  }
 }
 
 .tx-date {
   font-family: var(--lz-font-num);
   font-variant-numeric: tabular-nums;
-  color: #8fa8c8;
+  color: #8fb0d6;
 }
 
 .tx-note {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: #cfe1f6;
+  color: #dbe9ff;
 }
 
 .tx-amount {
@@ -682,8 +945,26 @@ function amountColor(t: Transaction) {
   font-weight: 600;
 }
 
+/* 入场动画 */
+.rise {
+  animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0s);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .marquee-list {
+  .marquee-list,
+  .rise {
     animation: none;
   }
 }

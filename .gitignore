@@ -21,6 +21,11 @@ dist-ssr
 coverage
 stats.html
 
+# AI 工具本地产物（CodeBuddy / WorkBuddy 的 agent 配置与会话文件，不入版本库）
+.codebuddy
+.codebuddy/
+.workbuddy
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
