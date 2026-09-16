@@ -1,11 +1,12 @@
 import type { ColumnMapping, ImportPreview } from '@/types/import'
 import type { Account, Category } from '@/types/transaction'
-import { defineStore } from 'pinia'
+import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import * as XLSX from 'xlsx'
 import { listAccounts } from '@/api/modules/account'
 import { findFallbackCategory, listCategories } from '@/api/modules/category'
 import { autoDetectColumns, buildPreview, commitImport } from '@/api/modules/import'
+import { useBookStore } from '@/stores/modules/book'
 
 /**
  * 导入向导状态机：upload → mapping → preview → done
@@ -13,6 +14,9 @@ import { autoDetectColumns, buildPreview, commitImport } from '@/api/modules/imp
  * xlsx 仅在此处做「File → 行」，与纯逻辑解耦，便于将来替换为后端直传。
  */
 export const useImportStore = defineStore('import', () => {
+  const bookStore = useBookStore()
+  const { currentBookId } = storeToRefs(bookStore)
+
   const step = ref<'upload' | 'mapping' | 'preview' | 'done'>('upload')
   const fileName = ref('')
   const rawRows = ref<Record<string, string | number>[]>([])
@@ -23,7 +27,8 @@ export const useImportStore = defineStore('import', () => {
   const importing = ref(false)
   const result = ref<{ inserted: number, skipped: number } | null>(null)
 
-  const bookId = ref(1)
+  // 导入落到「当前账本」，跟随用户切换的账本，而非写死的 1 号
+  const bookId = currentBookId
   const accountId = ref<number | null>(null)
   const keepDuplicates = ref(false)
   const categoryOverrides = ref<Record<number, number>>({})
