@@ -21,26 +21,23 @@ import {
 } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { mockListAccounts } from '@/api/modules/account/mock'
-import { mockListCategories } from '@/api/modules/category/mock'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
+import { useDictStore } from '@/stores/modules/dict'
 import { useRecurringStore } from '@/stores/modules/recurring'
 import { formatCents } from '@/utils/money'
 import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 
 const recurring = useRecurringStore()
 const book = useBookStore()
+const dict = useDictStore()
 const { templates, pending, loading } = storeToRefs(recurring)
+const { categories, accounts, categoryMap, accountMap } = storeToRefs(dict)
 
 const message = useMessage()
 const dialog = useDialog()
 
-// 字典：分类 / 账户（同步读 mock，仅做展示映射）
-const categories = mockListCategories()
-const accounts = computed(() => mockListAccounts(book.currentBookId))
-const categoryMap = computed(() => new Map(categories.map(c => [c.id, c])))
-const accountMap = computed(() => new Map(accounts.value.map(a => [a.id, a])))
+// 字典：分类 / 账户（走真实后端，由 dict store 按需缓存；账户按当前账本加载）
 
 // ── 模板表单（新增 / 编辑共用） ──────────────────────
 const showForm = ref(false)
@@ -59,7 +56,7 @@ const form = reactive({
 const startDateTs = ref<number | null>(null)
 
 const categoryOptions = computed(() =>
-  categories.filter(c => c.type === form.type).map(c => emojiOption(c.icon, c.name, c.id)),
+  categories.value.filter(c => c.type === form.type).map(c => emojiOption(c.icon, c.name, c.id)),
 )
 const accountOptions = computed(() =>
   accounts.value.map(a => emojiOption(a.icon, a.name, a.id)),
@@ -213,8 +210,9 @@ async function dismiss(p: { templateId: number }) {
   message.info('已跳过本月该笔')
 }
 
-onMounted(() => {
+onMounted(async () => {
   recurring.ensureLoaded()
+  await dict.ensureLoaded(book.currentBookId)
 })
 </script>
 
