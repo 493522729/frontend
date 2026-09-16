@@ -8,8 +8,10 @@
  *  1. **固定深色，不跟主题明暗切换** —— 大屏永远在深色环境下演示（投影/暗室）。
  *     若跟随主题，亮色模式下投出来会是一片惨白。所以这里不用 useChartPalette，
  *     而是写死一份深色色板（见下面 SCREEN 常量）。
- *  2. **固定画布 1920×1080 + transform: scale 等比缩放** —— 大屏屏比千奇百怪，
- *     用响应式布局会把设计稿拆散；等比缩放是业界标准做法，一次适配所有分辨率。
+ *  2. **固定画布 1920×1080 + transform: scale 缩放铺满** —— 大屏屏比千奇百怪，
+ *     用响应式布局会把设计稿拆散；这里横、纵各按 1920/1080 独立缩放，
+ *     任何分辨率都严格撑满、无黑边（PC 端用户明确要求不留黑边；
+ *     非等比在 16:10 等屏比下只有轻微纵向拉伸，大屏演示可接受）。
  *     scale 只改视觉尺寸、不改布局尺寸，所以 ECharts 不需要跟着 resize。
  *  3. **不复用 default layout** —— 全屏沉浸，走 BlankLayout（路由在 router/index.ts 手写）。
  *
@@ -87,10 +89,14 @@ const loading = ref(true)
 
 const now = ref(new Date())
 
-/** 等比缩放：以 1920×1080 为设计基准，取宽高缩放比的较小值 */
-const scale = ref(1)
+/** 铺满缩放：横纵各自对齐 1920×1080，四周预留 GAP 物理像素间隙，不留黑边也不顶边 */
+const SCREEN_GAP = 24
+const scale = ref({ x: 1, y: 1 })
 function fit() {
-  scale.value = Math.min(window.innerWidth / 1920, window.innerHeight / 1080)
+  scale.value = {
+    x: (window.innerWidth - SCREEN_GAP * 2) / 1920,
+    y: (window.innerHeight - SCREEN_GAP * 2) / 1080,
+  }
 }
 useEventListener(window, 'resize', fit)
 
@@ -382,7 +388,7 @@ function amountColor(t: Transaction) {
 
 <template>
   <div class="screen-root">
-    <div class="screen-canvas" :style="{ transform: `translate(-50%, -50%) scale(${scale})` }">
+    <div class="screen-canvas" :style="{ transform: `translate(-50%, -50%) scale(${scale.x}, ${scale.y})` }">
       <!-- 四角装饰框 -->
       <span class="corner corner--tl" />
       <span class="corner corner--tr" />
@@ -392,8 +398,7 @@ function amountColor(t: Transaction) {
       <header class="screen-head">
         <div class="head-side">
           <span class="brand-mark">
-            <span class="brand-glow" />
-            <span class="brand-logo">简</span>
+            <img src="/logo.png" alt="简账" class="brand-logo">
           </span>
           <div class="brand-text">
             <span class="brand">简账 · 财务中枢</span>
@@ -583,28 +588,15 @@ function amountColor(t: Transaction) {
 }
 
 .brand-mark {
-  position: relative;
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: linear-gradient(140deg, #4ea8ff, #a78bfa);
-  box-shadow: 0 6px 18px rgb(78 168 255 / 40%);
-}
-
-.brand-glow {
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / 60%), transparent 55%);
 }
 
 .brand-logo {
-  position: relative;
-  font-size: 20px;
-  font-weight: 800;
-  color: #fff;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 35%));
 }
 
 .brand-text {
