@@ -64,6 +64,10 @@ async function startBind() {
   statusText.value = ''
   try {
     const res = await createScanBindSession()
+    if (!res?.qrId || !res?.qrCodeDataUrl) {
+      message.error('生成绑定二维码失败，请稍后重试')
+      return
+    }
     ticket.value = res.qrId
     qrUrl.value = res.qrCodeDataUrl
     statusText.value = isMock.value
