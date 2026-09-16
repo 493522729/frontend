@@ -62,37 +62,12 @@ export interface ChangePasswordParams {
   newPassword: string
 }
 
-/** 用户模块接口集合 */
+/**
+ * 用户模块接口集合
+ * 注意：登录/注册/改密/登出已统一收敛到 @/api/modules/auth，
+ * 这里只保留资料更新（profile 页在用），避免与 auth 模块重复。
+ */
 export const userApi = {
-  /**
-   * 登录
-   * 注意返回类型：Promise<LoginResult>，不是 Result<LoginResult>。
-   * 因为 request 层已经把 Result 的 data 解包了。
-   */
-  login(params: LoginParams) {
-    return http.post<LoginResult>('/auth/login', params)
-  },
-
-  /** 注册（成功后自动登录，前端跳到首页） */
-  register(params: RegisterParams) {
-    return http.post<LoginResult>('/auth/register', params)
-  },
-
-  /** 修改密码（要求已登录） */
-  changePassword(params: ChangePasswordParams) {
-    return http.post<void>('/auth/change-password', params)
-  },
-
-  /** 退出登录（前端清 token，后端失效 refreshToken） */
-  logout() {
-    return http.post<void>('/auth/logout')
-  },
-
-  /** 获取当前登录用户信息 */
-  getProfile() {
-    return http.get<UserInfo>('/user/profile')
-  },
-
   /** 更新当前登录用户资料（昵称/头像/手机号） */
   updateProfile(params: UpdateProfileParams) {
     return http.put<UserInfo>('/user/profile', params)
