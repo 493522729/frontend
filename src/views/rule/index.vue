@@ -18,6 +18,7 @@ import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useRuleStore } from '@/stores/modules/rule'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { useTagStore } from '@/stores/modules/tag'
 import {
   FIELD_DEFAULTS,
   OPERATOR_LABELS,
@@ -34,11 +35,12 @@ const dialog = useDialog()
 const ruleStore = useRuleStore()
 const bookStore = useBookStore()
 const dict = useDictStore()
+const tagStore = useTagStore()
 const settings = useSettingsStore()
 
 // ── 列表加载 ──────────────────────────────────────────────
 onMounted(async () => {
-  await Promise.all([ruleStore.load(), dict.ensureCategories()])
+  await Promise.all([ruleStore.load(), dict.ensureCategories(), tagStore.ensureLoaded()])
 })
 
 // 全账本 option 的 value 用 0 表示，提交时若 === 0 → null（业务上「全账本」= 不绑账本）
@@ -107,6 +109,10 @@ async function submitForm() {
   for (const a of form.actions) {
     if (a.type === 'setCategory' && Number(a.payload.categoryId) <= 0) {
       message.warning('「修改分类」动作请选择目标分类')
+      return
+    }
+    if (a.type === 'addTag' && Number(a.payload.tagId) <= 0) {
+      message.warning('「加标签」动作请选择标签')
       return
     }
   }
@@ -221,8 +227,18 @@ function actionPreview(a: RuleAction): string {
   if (a.type === 'appendNote')
     return `追加「${a.payload.suffix}」`
   if (a.type === 'addTag')
-    return `加 #${a.payload.tag}`
+    return `打标签「${a.payload.tag || a.payload.tagId}」`
   return `通知「${a.payload.message}」`
+}
+
+/** 标签下拉选项（真实标签，色点 + 名称） */
+const tagOptions = computed(() => tagStore.tags.map(t => dotOption(t.color, t.name, t.id)))
+
+/** 选标签：写 tagId + 冗余存一份名字（用于展示/兼容） */
+function onAddTagChange(a: RuleAction, v: number | null) {
+  a.payload.tagId = v ?? 0
+  const t = v != null ? tagStore.tagMap.get(v) : undefined
+  a.payload.tag = t?.name ?? ''
 }
 
 // 分类选择器选项：按支出/收入分组，根→二级缩进展示（缩进交给 renderEmojiLabel 转 padding）
@@ -470,7 +486,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
               <NSelect :value="a.type" :options="RULE_ACTIONS.map(o => ({ label: o.label, value: o.value }))" style="width: 140px" @update:value="v => (a.type = v as typeof a.type)" />
               <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId || undefined" :options="categorySelectOptions" :render-label="renderEmojiLabel" placeholder="选择分类" clearable style="flex: 1" @update:value="v => (a.payload.categoryId = v || 0)" />
               <NInput v-else-if="a.type === 'appendNote'" :value="a.payload.suffix as string" placeholder="追加文本" style="flex: 1" @update:value="v => (a.payload.suffix = v)" />
-              <NInput v-else-if="a.type === 'addTag'" :value="a.payload.tag as string" placeholder="标签名" style="flex: 1" @update:value="v => (a.payload.tag = v)" />
+              <NSelect v-else-if="a.type === 'addTag'" :value="(a.payload.tagId as number) || undefined" :options="tagOptions" :render-label="renderDotLabel" placeholder="选择标签" clearable filterable style="flex: 1" @update:value="v => onAddTagChange(a, v as number | null)" />
               <NInput v-else :value="a.payload.message as string" placeholder="通知文案" style="flex: 1" @update:value="v => (a.payload.message = v)" />
               <NButton v-if="form.actions.length > 1" text type="error" @click="removeAction(idx)">
                 删除

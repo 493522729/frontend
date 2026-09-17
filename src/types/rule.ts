@@ -41,7 +41,7 @@ export interface RuleCondition {
 export type RuleActionType
   = | 'setCategory' // 改分类
     | 'appendNote' // 备注后追加
-    | 'addTag' // 备注前加 #tag（空格分隔）
+    | 'addTag' // 给交易打上真实标签（关联 tagId）
     | 'notify' // 弹通知（仅 UI 层执行，纯函数只标记 'notified'）
 
 export interface RuleAction {
@@ -50,7 +50,7 @@ export interface RuleAction {
    * 各类动作需要的载荷：
    *  - setCategory: { categoryId: number }
    *  - appendNote: { suffix: string }
-   *  - addTag: { tag: string }
+   *  - addTag: { tagId: number, tag: string }（tag 为标签名，冗余存储便于展示/兼容）
    *  - notify: { message: string }
    */
   payload: Record<string, string | number>
@@ -129,7 +129,7 @@ export const RULE_FIELDS: { label: string, value: RuleField }[] = [
 export const RULE_ACTIONS: { label: string, value: RuleActionType, hint: string }[] = [
   { label: '修改分类', value: 'setCategory', hint: '改挂到指定分类' },
   { label: '追加备注', value: 'appendNote', hint: '在备注末尾追加文本' },
-  { label: '加标签', value: 'addTag', hint: '在备注前加 #tag' },
+  { label: '加标签', value: 'addTag', hint: '给交易打上真实标签' },
   { label: '弹通知', value: 'notify', hint: '触发后弹通知（纯函数仅标记）' },
 ]
 

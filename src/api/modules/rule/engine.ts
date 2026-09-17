@@ -60,13 +60,14 @@ function applyAction(action: RuleAction, txn: Transaction): Transaction {
       return { ...txn, note: txn.note ? `${txn.note} ${suffix}` : suffix }
     }
     case 'addTag': {
-      const tag = String(action.payload.tag ?? '').trim()
-      if (!tag)
+      // 真实标签关联：把 tagId 并入 txn.tagIds（去重），不再拼到 note
+      const tagId = Number(action.payload.tagId)
+      if (!Number.isFinite(tagId) || tagId <= 0)
         return txn
-      const formatted = `#${tag}`
-      if (txn.note.includes(formatted))
+      const cur = txn.tagIds ? [...txn.tagIds] : []
+      if (cur.includes(tagId))
         return txn
-      return { ...txn, note: txn.note ? `${formatted} ${txn.note}` : formatted }
+      return { ...txn, tagIds: [...cur, tagId] }
     }
     case 'notify':
       return txn
