@@ -139,7 +139,10 @@ function applyAction(action: RuleAction, txn: Transaction): Transaction {
  */
 export function runRule(rule: Rule, txn: Transaction): RuleExecution {
   const matchedConditions = rule.conditions.filter(c => evalCondition(c, txn))
-  const matched = matchedConditions.length === rule.conditions.length && rule.conditions.length > 0
+  // match=any（OR）：任一条件满足即命中；缺省/all（AND）：需全部满足
+  const matched = rule.match === 'any'
+    ? matchedConditions.length > 0
+    : matchedConditions.length === rule.conditions.length && rule.conditions.length > 0
 
   if (!matched) {
     return {

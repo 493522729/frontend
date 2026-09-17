@@ -7,11 +7,12 @@
  * - 创建/编辑 Modal：条件构建器 + 动作链
  * - 试算 Modal：拿样本交易跑一遍，返回每个规则的命中与改后差异
  */
-import type { Rule, RuleAction, RuleCondition, RuleField, RuleInput } from '@/types/rule'
+import type { Rule, RuleAction, RuleCondition, RuleField, RuleInput, RuleMatch } from '@/types/rule'
 import type { Category, Transaction } from '@/types/transaction'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { runRule } from '@/api/modules/rule'
+import { listTransactions } from '@/api/modules/transaction'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
@@ -25,6 +26,7 @@ import {
   RULE_FIELDS,
   TRANSACTION_TYPE_OPTIONS,
 } from '@/types/rule'
+import { formatCents } from '@/utils/money'
 import { dotOption, emojiOption, renderDotLabel, renderEmojiLabel } from '@/utils/select-option'
 
 const message = useMessage()
@@ -53,6 +55,7 @@ const editingId = ref<number | null>(null)
 interface FormState {
   bookId: number
   name: string
+  match: RuleMatch
   conditions: RuleCondition[]
   actions: RuleAction[]
   active: boolean
@@ -62,6 +65,7 @@ function emptyForm(): FormState {
   return {
     bookId: ALL_BOOKS,
     name: '',
+    match: 'all',
     conditions: [{ field: 'note', op: 'contains', value: '' }],
     actions: [{ type: 'setCategory', payload: { categoryId: 0 } }],
     active: true,
@@ -80,6 +84,7 @@ function openEdit(rule: Rule) {
   editingId.value = rule.id
   form.bookId = rule.bookId ?? ALL_BOOKS
   form.name = rule.name
+  form.match = rule.match ?? 'all'
   form.conditions = rule.conditions.map(c => ({ ...c }))
   form.actions = rule.actions.map(a => ({ ...a, payload: { ...a.payload } }))
   form.active = rule.active
@@ -114,6 +119,7 @@ async function submitForm() {
     // 全账本 sentinel（0）→ 业务上 null 表示「不绑账本」
     bookId: form.bookId === ALL_BOOKS ? null : form.bookId,
     name: form.name.trim(),
+    match: form.match,
     conditions: form.conditions,
     actions: form.actions,
     trigger: 'onSave',
@@ -238,51 +244,84 @@ const categorySelectOptions = computed(() => {
 
 // ── 试算 ──────────────────────────────────────────────────
 const showPreview = ref(false)
-const previewResults = ref<{ ruleName: string, matched: boolean, before: Transaction, after: Transaction, diff: string[] }[]>([])
+const previewLoading = ref(false)
+const recentTxns = ref<Transaction[]>([])
+const selectedTxnId = ref<number | null>(null)
 
-function openPreview() {
+interface PreviewResult {
+  ruleName: string
+  /** true=命中 false=未命中 null=跳过（停用/不适用账本） */
+  matched: boolean | null
+  skipReason?: string
+  diff: string[]
+  /** 未命中时的逐条诊断（AND/OR 语义下让用户看清差哪条） */
+  conditionStatus?: { text: string, hit: boolean }[]
+  matchMode?: RuleMatch
+}
+const previewResults = ref<PreviewResult[]>([])
+
+/** 交易下拉选项：日期 · 分类 · 金额 · 备注 */
+const txnOptions = computed(() => recentTxns.value.map(t => ({
+  label: `${t.transDate} · ${categoryNameOf(t.categoryId)} · ${t.type === 'income' ? '+' : '-'}${formatCents(t.amount)} · ${t.note || '无备注'}`,
+  value: t.id,
+})))
+
+async function openPreview() {
   showPreview.value = true
   previewResults.value = []
+  selectedTxnId.value = null
+  previewLoading.value = true
+  try {
+    const res = await listTransactions({ page: 1, pageSize: 20, bookId: bookStore.currentBookId })
+    recentTxns.value = res.list
+  }
+  catch {
+    message.error('加载最近交易失败')
+    recentTxns.value = []
+  }
+  finally {
+    previewLoading.value = false
+  }
+}
+
+/** 规则动作只会改分类/备注，试算差异就展示这两个字段的语义化前后对比 */
+function diffOf(before: Transaction, after: Transaction): string[] {
+  const diff: string[] = []
+  if (before.categoryId !== after.categoryId)
+    diff.push(`分类 ${categoryNameOf(before.categoryId)} → ${categoryNameOf(after.categoryId)}`)
+  if (before.note !== after.note)
+    diff.push(`备注「${before.note || '空'}」→「${after.note}」`)
+  return diff
 }
 
 function runPreview() {
-  const sample: Transaction = {
-    id: -1,
-    bookId: bookStore.currentBookId,
-    type: 'expense',
-    amount: 0,
-    currency: 'CNY',
-    accountId: 0,
-    toAccountId: null,
-    categoryId: 0,
-    transDate: '2026-01-01',
-    note: '',
-    source: 'manual',
-    status: 'confirmed',
-    createdAt: 0,
-    updatedAt: 0,
+  const txn = recentTxns.value.find(t => t.id === selectedTxnId.value)
+  if (!txn) {
+    message.warning('请先选择一笔真实交易')
+    return
   }
-  // 简单试算：逐条规则跑，让用户填 sample 后看结果
-  // 为方便演示，直接拿 mock 第一笔交易当样本
   previewResults.value = ruleStore.list.map((rule) => {
-    const exec = runRule(rule, sample)
-    const diff: string[] = []
-    if (exec.matched) {
-      if (exec.modifiedTxn.categoryId !== sample.categoryId)
-        diff.push(`categoryId ${sample.categoryId} → ${exec.modifiedTxn.categoryId}`)
-      if (exec.modifiedTxn.note !== sample.note)
-        diff.push(`note "${sample.note}" → "${exec.modifiedTxn.note}"`)
-    }
+    if (!rule.active)
+      return { ruleName: rule.name, matched: null, skipReason: '已停用，跳过', diff: [] }
+    if (rule.bookId != null && rule.bookId !== txn.bookId)
+      return { ruleName: rule.name, matched: null, skipReason: '不适用该账本，跳过', diff: [] }
+    const exec = runRule(rule, txn)
     return {
       ruleName: rule.name,
       matched: exec.matched,
-      before: sample,
-      after: exec.modifiedTxn,
-      diff,
+      diff: exec.matched ? diffOf(txn, exec.modifiedTxn) : [],
+      conditionStatus: rule.conditions.map(c => ({
+        text: conditionPreview(c),
+        hit: exec.matchedConditions.includes(c),
+      })),
+      matchMode: rule.match ?? 'all',
     }
   })
-  if (previewResults.value.every(r => !r.matched))
-    message.info('当前样本下没有规则匹配 —— 试算仅检查语法与配置')
+  const hit = previewResults.value.filter(r => r.matched === true).length
+  if (hit > 0)
+    message.success(`${hit} 条规则命中，看下方改动明细`)
+  else
+    message.info('这笔交易没有命中任何规则 —— 可放宽条件后重试')
 }
 
 // ── 视图辅助 ──────────────────────────────────────────────
@@ -345,7 +384,7 @@ const hasResult = computed(() => ruleStore.list.length > 0)
         </div>
         <div class="rule-card-body">
           <div class="rule-block">
-            <span class="block-label">条件（{{ rule.conditions.length }}）</span>
+            <span class="block-label">条件（{{ rule.conditions.length }}{{ rule.conditions.length > 1 ? ` · ${rule.match === 'any' ? '任一满足' : '全部满足'}` : '' }}）</span>
             <div class="block-items">
               <NTag v-for="(c, i) in rule.conditions" :key="i" size="small" :bordered="false">
                 {{ conditionPreview(c) }}
@@ -383,7 +422,15 @@ const hasResult = computed(() => ruleStore.list.length > 0)
 
         <div>
           <div class="form-section-head">
-            <label class="form-label">条件（AND 组合）</label>
+            <label class="form-label">条件</label>
+            <NRadioGroup v-model:value="form.match" size="small">
+              <NRadioButton value="all">
+                满足全部（AND）
+              </NRadioButton>
+              <NRadioButton value="any">
+                满足任一（OR）
+              </NRadioButton>
+            </NRadioGroup>
             <NButton size="tiny" @click="addCondition">
               + 添加
             </NButton>
@@ -451,26 +498,56 @@ const hasResult = computed(() => ruleStore.list.length > 0)
     <!-- 试算 -->
     <NModal v-model:show="showPreview" preset="card" title="试算" style="width: 720px">
       <NAlert type="info" :show-icon="false" style="margin-bottom: 12px">
-        用占位样本（空 note / 金额 0 / 分类 0）跑所有规则 —— 主要看规则配置是否正确。生产试算需指定一笔真实交易。
+        选一笔真实交易，用当前规则试跑一遍（只预览、不写入）——命中的规则会展示分类/备注会被改成什么样。
       </NAlert>
-      <NButton type="primary" @click="runPreview">
-        运行试算
-      </NButton>
+      <NSpace vertical size="medium">
+        <NSelect
+          v-model:value="selectedTxnId"
+          :options="txnOptions"
+          :loading="previewLoading"
+          filterable
+          placeholder="选择最近的一笔交易"
+        />
+        <NButton type="primary" :disabled="selectedTxnId == null" @click="runPreview">
+          运行试算
+        </NButton>
+      </NSpace>
       <div v-if="previewResults.length > 0" class="preview-results">
         <NCard v-for="(r, i) in previewResults" :key="i" size="small" class="preview-card">
           <template #header>
-            <span :class="{ matched: r.matched }">{{ r.ruleName }}</span>
-            <NTag :type="r.matched ? 'success' : 'default'" size="small" style="margin-left: 8px">
-              {{ r.matched ? '匹配' : '不匹配' }}
+            <span :class="{ matched: r.matched === true }">{{ r.ruleName }}</span>
+            <NTag
+              :type="r.matched === true ? 'success' : r.matched === false ? 'default' : 'warning'"
+              size="small"
+              style="margin-left: 8px"
+            >
+              {{ r.matched === true ? '命中' : r.matched === false ? '未命中' : r.skipReason }}
             </NTag>
           </template>
-          <ul v-if="r.matched && r.diff.length > 0">
+          <ul v-if="r.matched === true && r.diff.length > 0">
             <li v-for="(d, k) in r.diff" :key="k">
               {{ d }}
             </li>
           </ul>
+          <template v-else-if="r.matched === false">
+            <NText depth="3" style="font-size: 12px">
+              {{ r.matchMode === 'any' ? '条件为 OR 组合、任一满足即命中' : '条件为 AND 组合、需全部满足' }} —— 命中
+              {{ r.conditionStatus?.filter(c => c.hit).length ?? 0 }}/{{ r.conditionStatus?.length ?? 0 }} 条：
+            </NText>
+            <div class="cond-diag">
+              <NTag
+                v-for="(cs, k) in r.conditionStatus"
+                :key="k"
+                size="small"
+                :type="cs.hit ? 'success' : 'error'"
+                :bordered="false"
+              >
+                {{ cs.hit ? '✓' : '✗' }} {{ cs.text }}
+              </NTag>
+            </div>
+          </template>
           <NText v-else depth="3" style="font-size: 12px">
-            无字段差异
+            {{ r.matched === true ? '无字段差异' : '—' }}
           </NText>
         </NCard>
       </div>
@@ -568,5 +645,11 @@ const hasResult = computed(() => ruleStore.list.length > 0)
   margin: 4px 0 0;
   padding-left: 18px;
   font-size: 13px;
+}
+.cond-diag {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 </style>

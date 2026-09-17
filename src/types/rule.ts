@@ -59,15 +59,20 @@ export interface RuleAction {
 /** 触发时机 */
 export type RuleTrigger = 'onSave' // 交易保存后跑（最常用）
 
+/** 条件组合方式：all=AND 全部满足；any=OR 任一满足 */
+export type RuleMatch = 'all' | 'any'
+
 /** 规则主结构 */
 export interface Rule {
   id: number
   bookId: number | null // null = 全账本
   name: string
-  /** 条件数组（AND 组合；OR 在 v2 用 conditionGroups 扩展） */
+  /** 条件数组（组合方式由 match 决定） */
   conditions: RuleCondition[]
   actions: RuleAction[]
   trigger: RuleTrigger
+  /** 条件组合方式；缺省 all（历史数据兼容，引擎按 all 处理） */
+  match?: RuleMatch
   active: boolean
   createdAt: number
   updatedAt: number

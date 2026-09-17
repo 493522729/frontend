@@ -123,6 +123,31 @@ describe('runRule — 单条规则评估', () => {
     expect(runRule(rule, makeTxn({ type: 'expense', amount: 500 })).matched).toBe(false)
   })
 
+  it('match=any（OR）：任一条件满足即匹配，缺省仍为 AND', () => {
+    const anyRule = {
+      id: 1,
+      bookId: null,
+      name: '',
+      match: 'any' as const,
+      conditions: [
+        { field: 'note' as const, op: 'contains' as const, value: '星巴克' },
+        { field: 'note' as const, op: 'contains' as const, value: '瑞幸' },
+        { field: 'note' as const, op: 'contains' as const, value: '奶茶' },
+      ],
+      actions: [],
+      trigger: 'onSave' as const,
+      active: true,
+      createdAt: 0,
+      updatedAt: 0,
+    }
+    expect(runRule(anyRule, makeTxn({ note: '瑞幸' })).matched).toBe(true)
+    expect(runRule(anyRule, makeTxn({ note: '一点点奶茶' })).matched).toBe(true)
+    expect(runRule(anyRule, makeTxn({ note: '便利店' })).matched).toBe(false)
+    // 无 match 字段（历史数据）按 AND：只满足 1/3 不命中
+    const legacyRule = { ...anyRule, match: undefined }
+    expect(runRule(legacyRule, makeTxn({ note: '瑞幸' })).matched).toBe(false)
+  })
+
   it('不匹配时不应用动作，modifiedTxn 等于原交易', () => {
     const rule = {
       id: 1,
