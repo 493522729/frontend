@@ -7,7 +7,8 @@ const RuleRoute: RouteRecordRaw = {
   meta: {
     title: '规则引擎',
     icon: 'wand',
-    order: 8,
+    // 自动化工具组头位：分析规划组(≤9)之后
+    order: 10,
     requiresAuth: true,
   },
 }

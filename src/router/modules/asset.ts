@@ -8,8 +8,8 @@ const assetRoutes: RouteRecordRaw[] = [
     meta: {
       title: '资产趋势',
       icon: 'trending',
-      // 排在「分析」组：账户（order 5）之后，与报表同组
-      order: 6,
+      // 分析规划组头位：基础配置组(≤6)之后
+      order: 7,
       requiresAuth: true,
     },
   },

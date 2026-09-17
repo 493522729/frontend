@@ -8,8 +8,8 @@ const importRoutes: RouteRecordRaw[] = [
     meta: {
       title: '导入对账',
       icon: 'upload',
-      // 「分析」组之后：资产趋势(6) / 预算(7) / 报表(8) 之后
-      order: 9,
+      // 自动化工具组末位：规则(10) / 周期账单(11) 之后
+      order: 12,
       requiresAuth: true,
     },
   },

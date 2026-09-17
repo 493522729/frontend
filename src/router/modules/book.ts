@@ -8,6 +8,7 @@ const bookRoutes: RouteRecordRaw[] = [
     meta: {
       title: '账本管理',
       icon: 'books',
+      // 基础配置组：账户(3)之后
       order: 4,
       requiresAuth: true,
     },

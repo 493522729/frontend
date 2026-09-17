@@ -8,8 +8,8 @@ const accountRoutes: RouteRecordRaw[] = [
     meta: {
       title: '账户管理',
       icon: 'wallet',
-      // 排在「规划」组：账户和账本一样，是「钱怎么放」的配置
-      order: 5,
+      // 基础配置组头位：交易流水(2)之后，钱先有去处（账户→账本→分类→标签）
+      order: 3,
       requiresAuth: true,
     },
   },

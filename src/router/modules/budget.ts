@@ -8,8 +8,8 @@ const budgetRoutes: RouteRecordRaw[] = [
     meta: {
       title: '预算',
       icon: 'flag',
-      // 排在「规划」组：账户(5) / 资产趋势(6) 之后
-      order: 7,
+      // 分析规划组：资产趋势(7) / 报表(8) 之后
+      order: 9,
       requiresAuth: true,
     },
   },

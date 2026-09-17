@@ -8,7 +8,8 @@ const recurringRoute: RouteRecordRaw = {
   meta: {
     title: '周期账单',
     icon: 'calendar',
-    order: 9,
+    // 自动化工具组：规则(10)之后
+    order: 11,
     requiresAuth: true,
   },
 }
