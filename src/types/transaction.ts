@@ -8,6 +8,7 @@
  */
 import type { AccountType } from '@/enums/account'
 import type { TransactionSource, TransactionType } from '@/enums/transaction'
+import type { Tag } from '@/types/tag'
 
 /** 交易入账状态：待确认（导入/系统生成待用户复核）/ 已记（已确认入账） */
 export type TransactionStatus = 'pending' | 'confirmed'
@@ -37,6 +38,10 @@ export interface Transaction {
   source: TransactionSource
   /** 入账状态；缺省视为已记（存量/手动数据无需复核） */
   status?: TransactionStatus
+  /** 关联标签 id 列表（前端引擎 / 批量打标维护，后端以真实标签关联存储） */
+  tagIds?: number[]
+  /** 关联标签明细（列表响应携带，直接渲染用，避免再查字典） */
+  tags?: Tag[]
   /** 创建时间戳（ms） */
   createdAt: number
   /** 更新时间戳（ms） */
@@ -52,6 +57,8 @@ export interface TransactionListParams {
   categoryIds?: number[]
   accountIds?: number[]
   types?: TransactionType[]
+  /** 标签筛选：任一命中（与 categoryIds 同样的传参语义） */
+  tagIds?: number[]
   /** 模糊匹配备注 / 分类名 */
   keyword?: string
   /** 入账状态筛选：pending=待确认 / confirmed=已记；不传=全部 */

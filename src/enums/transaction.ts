@@ -9,8 +9,8 @@
 export const TRANSACTION_TYPES = ['income', 'expense', 'transfer'] as const
 export type TransactionType = (typeof TRANSACTION_TYPES)[number]
 
-/** 交易来源 */
-export const TRANSACTION_SOURCES = ['manual', 'import', 'recurring'] as const
+/** 交易来源（mini = 小程序录入，与后端/小程序端 source 值对齐） */
+export const TRANSACTION_SOURCES = ['manual', 'import', 'recurring', 'mini'] as const
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number]
 
 /**
@@ -34,4 +34,5 @@ export const TRANSACTION_SOURCE_META: Record<TransactionSource, { label: string 
   manual: { label: '手动' },
   import: { label: '导入' },
   recurring: { label: '周期' },
+  mini: { label: '小程序' },
 }

@@ -45,6 +45,8 @@ export interface FilterState {
   type: TransactionType | null
   accountIds: number[]
   categoryIds: number[]
+  /** 标签筛选：任一命中（与 categoryIds 同样语义） */
+  tagIds: number[]
   keyword: string
   /** 入账状态：all=全部 / pending=待确认 / confirmed=已记（PRD §15.2.2 状态筛选） */
   status: 'all' | TransactionStatus
@@ -77,6 +79,7 @@ export function useTransactionList() {
     type: null,
     accountIds: [],
     categoryIds: [],
+    tagIds: [],
     keyword: '',
     status: 'all',
   })
@@ -104,6 +107,7 @@ export function useTransactionList() {
     filter.type = null
     filter.accountIds = []
     filter.categoryIds = []
+    filter.tagIds = []
     filter.keyword = ''
     filter.status = 'all'
     page.value = 1
@@ -139,6 +143,7 @@ export function useTransactionList() {
       : null
     filter.accountIds = ids(q.accounts)
     filter.categoryIds = ids(q.categories)
+    filter.tagIds = ids(q.tags)
     filter.keyword = str(q.keyword) ?? ''
     filter.status = q.status === 'pending' || q.status === 'confirmed' ? q.status : 'all'
     const p = Number(q.page)
@@ -164,6 +169,7 @@ export function useTransactionList() {
       type: filter.type ?? undefined,
       accounts: filter.accountIds.length > 0 ? filter.accountIds.join(',') : undefined,
       categories: filter.categoryIds.length > 0 ? filter.categoryIds.join(',') : undefined,
+      tags: filter.tagIds.length > 0 ? filter.tagIds.join(',') : undefined,
       keyword: filter.keyword || undefined,
       status: filter.status !== 'all' ? filter.status : undefined,
       page: page.value > 1 ? String(page.value) : undefined,
@@ -187,6 +193,7 @@ export function useTransactionList() {
       types: filter.type ? [filter.type] : undefined,
       accountIds: filter.accountIds.length ? filter.accountIds : undefined,
       categoryIds: filter.categoryIds.length ? filter.categoryIds : undefined,
+      tagIds: filter.tagIds.length ? filter.tagIds : undefined,
       keyword: filter.keyword || undefined,
       // 状态筛选：all 时不传，让 mock/后端走「不过滤」分支
       status: filter.status !== 'all' ? filter.status : undefined,
@@ -254,7 +261,7 @@ export function useTransactionList() {
   // 筛选变化自动 reload（防抖 250ms）
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   watch(
-    () => [filter.startDate, filter.endDate, filter.type, filter.accountIds.length, filter.categoryIds.length, filter.keyword, filter.status],
+    () => [filter.startDate, filter.endDate, filter.type, filter.accountIds.length, filter.categoryIds.length, filter.tagIds.length, filter.keyword, filter.status],
     () => {
       page.value = 1
       syncToQuery()

@@ -14,9 +14,12 @@
  */
 import type { App } from 'vue'
 import type { VxeGridProps } from 'vxe-table'
+import type { Tag } from '@/types/tag'
 import type { Transaction } from '@/types/transaction'
 import { useDialog, useMessage, useNotification } from 'naive-ui'
 import { computed, getCurrentInstance, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { createTag } from '@/api/modules/tag'
+import { batchTag } from '@/api/modules/transaction'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import { useHotkey } from '@/composables/useHotkey'
 import { useIsMobile } from '@/composables/useIsMobile'
@@ -25,8 +28,9 @@ import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transact
 import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { useTagStore } from '@/stores/modules/tag'
 import { formatCents } from '@/utils/money'
-import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
+import { dotOption, emojiOption, renderDotLabel, renderEmojiLabel } from '@/utils/select-option'
 import { ensureVxeTable } from './_vxe-bootstrap'
 import FilterPanel from './components/FilterPanel.vue'
 import MobileTxnList from './components/MobileTxnList.vue'
@@ -64,6 +68,7 @@ const notification = useNotification()
 const dialog = useDialog()
 const settings = useSettingsStore()
 const dict = useDictStore()
+const tagStore = useTagStore()
 
 // ── 行内编辑保存策略 ──
 //  - 金额 / 备注：编辑框失焦时由 @edit-closed 统一回写保存
@@ -124,6 +129,8 @@ onMounted(() => {
     gridResizeObserver = new ResizeObserver(syncGridHeight)
     gridResizeObserver.observe(gridHostRef.value)
   }
+  // 标签字典（流水标签列 / 筛选 / 批量打标都依赖它）
+  void tagStore.ensureLoaded()
 })
 
 onBeforeUnmount(() => {
@@ -171,6 +178,7 @@ function hasActiveFilter(f: typeof filter): boolean {
     || f.type
     || f.status !== 'all'
     || (f.categoryIds && f.categoryIds.length > 0)
+    || (f.tagIds && f.tagIds.length > 0)
     || (f.accountIds && f.accountIds.length > 0)
     || f.startDate
     || f.endDate
@@ -189,6 +197,7 @@ const filterApplied = computed(() => {
     f.keyword
     || f.type
     || (f.categoryIds && f.categoryIds.length > 0)
+    || (f.tagIds && f.tagIds.length > 0)
     || (f.accountIds && f.accountIds.length > 0)
     || f.startDate
     || f.endDate
@@ -237,6 +246,107 @@ async function onCategoryChange(row: Transaction, v: number) {
   }
   catch {
     message.error('保存失败')
+  }
+}
+
+// ── 流水标签列：单元格内 NTag 展示 + NPopover 多选打标 ──────────
+const TAG_COLORS = ['#378ADD', '#0F6E56', '#993C1D', '#993556', '#854F0B', '#534AB7', '#1D9E75', '#D85A30', '#A32D2D', '#5F5E5A']
+/** 新建标签时轮换取色（与标签管理页同一套色板） */
+const tagColorCursor = ref(0)
+/** 当前正在编辑标签的行的 id（null = 无弹层） */
+const tagEditorRowId = ref<number | null>(null)
+/** 弹层内 NSelect 的当前选中（number = 已有标签，string = 临时输入的待建新标签） */
+const tagEditorIds = ref<Array<number | string>>([])
+
+/** 标签下拉选项（来自 tag store，色点 + 名称） */
+const tagOptions = computed(() => tagStore.tags.map(t => dotOption(t.color, t.name, t.id)))
+
+/** 取某行已关联的标签明细（后端列表响应直接带了 tags，无需再查字典） */
+function rowTags(row: Transaction): Tag[] {
+  return (row.tags ?? []).filter(Boolean)
+}
+
+/** 弹层开关：打开时载入该行当前 tagId 列表，关闭时清空 */
+function onTagPopoverShow(row: Transaction, show: boolean) {
+  if (show) {
+    tagEditorRowId.value = row.id
+    tagEditorIds.value = (row.tags ?? []).map(t => t.id)
+  }
+  else {
+    tagEditorRowId.value = null
+  }
+}
+
+/**
+ * NSelect（multiple + tag）值变化回调：
+ * 用户回车输入的「新名字」会以字符串形式进入 value，这里逐条识别、先 createTag 入库，
+ * 再把字符串替换成新标签的 id，保证弹层里只保留数字 id，便于「确定」时直接提交。
+ */
+async function onTagEditorValueChange(val: Array<number | string>) {
+  const resolved: number[] = []
+  for (const v of val) {
+    if (typeof v === 'number') {
+      resolved.push(v)
+      continue
+    }
+    const name = String(v).trim()
+    if (!name)
+      continue
+    try {
+      const created = await createTag({ name, color: TAG_COLORS[tagColorCursor.value++ % TAG_COLORS.length]! })
+      tagStore.tags.push(created)
+      resolved.push(created.id)
+    }
+    catch {
+      message.error(`标签「${name}」创建失败`)
+    }
+  }
+  tagEditorIds.value = resolved
+}
+
+/** 确定：把弹层里的 tagIds 写回该行（saveRow 走 updateTransaction 并乐观刷新本行） */
+async function applyTagEdit() {
+  const rowId = tagEditorRowId.value
+  if (rowId == null)
+    return
+  const ids = tagEditorIds.value.filter((v): v is number => typeof v === 'number')
+  try {
+    await saveRow(rowId, { tagIds: ids })
+    message.success('已更新标签', { duration: 1500 })
+  }
+  catch {
+    message.error('更新失败')
+  }
+  finally {
+    tagEditorRowId.value = null
+  }
+}
+
+// ── 批量打标 ──────────────────────────────────────────────
+const batchTagIds = ref<number[]>([])
+
+async function onBatchTag(mode: 'add' | 'remove') {
+  if (batchTagIds.value.length === 0) {
+    message.warning('请先选择标签')
+    return
+  }
+  if (selectedIds.value.length === 0) {
+    message.warning('请先勾选要打标签的流水')
+    return
+  }
+  const n = selectedIds.value.length
+  try {
+    if (mode === 'add')
+      await batchTag(selectedIds.value, batchTagIds.value, [])
+    else
+      await batchTag(selectedIds.value, [], batchTagIds.value)
+    batchTagIds.value = []
+    selectedIds.value = []
+    await reload()
+    message.success(`已${mode === 'add' ? '添加' : '移除'}标签（${n} 笔）`)
+  }
+  catch {
+    message.error('批量打标失败')
   }
 }
 
@@ -303,6 +413,13 @@ const BASE_COLUMNS: ColDef[] = [
     width: 130,
     // 分类列不进 vxe 编辑态：直接常驻 NSelect（见模板 #category_cell 注释），选完即保存
     slots: { default: 'category_cell' },
+  },
+  {
+    field: 'tags',
+    title: '标签',
+    width: 150,
+    // 标签列：单元格内渲染 NTag（色点背景）；点单元格 / "+" 弹 NPopover 多选打标
+    slots: { default: 'tag_cell' },
   },
   // 转账行要显示「A → B」两端，宽度按两条账户名预留，否则会被截断成省略号
   { field: 'accountId', title: '账户', width: 170, slots: { default: 'account_cell' } },
@@ -657,6 +774,7 @@ async function onConfirmBatch() {
               :filter="filter"
               :categories="dict.categories"
               :accounts="dict.accounts"
+              :tags="tagStore.tags"
               @change="applyFilter"
               @reset="resetFilter"
             />
@@ -670,6 +788,7 @@ async function onConfirmBatch() {
         :filter="filter"
         :categories="dict.categories"
         :accounts="dict.accounts"
+        :tags="tagStore.tags"
         @change="applyFilter"
         @reset="resetFilter"
       />
@@ -690,6 +809,33 @@ async function onConfirmBatch() {
             <NButton size="small" type="primary" @click="onBatchSetCategory">
               应用
             </NButton>
+            <NPopover trigger="click" placement="bottom">
+              <template #trigger>
+                <NButton size="small">
+                  打标签
+                </NButton>
+              </template>
+              <div class="batch-tag-pop">
+                <NSelect
+                  v-model:value="batchTagIds"
+                  :options="tagOptions"
+                  :render-label="renderDotLabel"
+                  multiple
+                  filterable
+                  placeholder="选择标签"
+                  size="small"
+                  style="width: 220px"
+                />
+                <NSpace>
+                  <NButton size="tiny" type="primary" @click="onBatchTag('add')">
+                    添加
+                  </NButton>
+                  <NButton size="tiny" @click="onBatchTag('remove')">
+                    移除
+                  </NButton>
+                </NSpace>
+              </div>
+            </NPopover>
             <NButton size="small" type="warning" @click="onConfirmBatch">
               批量确认
             </NButton>
@@ -791,6 +937,57 @@ async function onConfirmBatch() {
                   filterable
                   @update:value="onCategoryChange(row, $event)"
                 />
+              </template>
+
+              <!--
+                标签列：单元格内渲染已关联标签（色块 NTag），最多 3 个，超出显示「…+n」；
+                点单元格或末尾「+」弹 NPopover，内嵌 NSelect(multiple + tag) 多选打标；
+                输入新名回车即创建并选中，确定后写回该行 tagIds。
+              -->
+              <template #tag_cell="{ row }">
+                <NPopover
+                  trigger="click"
+                  placement="bottom"
+                  :show="tagEditorRowId === (row as Transaction).id"
+                  @update:show="v => onTagPopoverShow(row as Transaction, v)"
+                >
+                  <template #trigger>
+                    <div class="tag-cell">
+                      <template v-if="rowTags(row as Transaction).length">
+                        <NTag
+                          v-for="t in rowTags(row as Transaction).slice(0, 3)"
+                          :key="t.id"
+                          size="small"
+                          :bordered="false"
+                          round
+                          :color="{ color: t.color, textColor: '#fff', borderColor: 'transparent' }"
+                        >
+                          {{ t.name }}
+                        </NTag>
+                        <span v-if="rowTags(row as Transaction).length > 3" class="tag-more">+{{ rowTags(row as Transaction).length - 3 }}</span>
+                      </template>
+                      <span v-else class="tag-empty">—</span>
+                      <span class="tag-add">+</span>
+                    </div>
+                  </template>
+                  <div class="tag-pop">
+                    <NSelect
+                      :value="tagEditorIds"
+                      :options="tagOptions"
+                      :render-label="renderDotLabel"
+                      multiple
+                      filterable
+                      tag
+                      placeholder="选择或输入新标签"
+                      size="small"
+                      style="width: 240px"
+                      @update:value="(v: any) => onTagEditorValueChange(v)"
+                    />
+                    <NButton size="small" type="primary" block @click="applyTagEdit">
+                      确定
+                    </NButton>
+                  </div>
+                </NPopover>
               </template>
 
               <!--
@@ -1118,6 +1315,65 @@ async function onConfirmBatch() {
 // 待确认标签与来源标签之间的间距
 .status-pending {
   margin-left: 6px;
+}
+
+// ── 标签列单元格 ────────────────────────────────────────
+.tag-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  min-height: 24px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  width: 100%;
+
+  &:hover {
+    background: var(--lz-bg-hover);
+  }
+}
+
+.tag-empty {
+  font-size: 13px;
+  color: var(--lz-text-placeholder);
+}
+
+.tag-more {
+  font-size: 12px;
+  color: var(--lz-text-secondary);
+  background: var(--lz-bg-page);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+.tag-add {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--lz-text-secondary);
+  border: 1px dashed var(--lz-border);
+  flex-shrink: 0;
+}
+
+// 标签打标弹层内的布局
+.tag-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+
+// 批量打标弹层
+.batch-tag-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
 }
 
 // 加载失败统一错误条（PRD 9.2）

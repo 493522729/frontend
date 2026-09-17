@@ -36,6 +36,8 @@ export function listTransactions(params: TransactionListParams): Promise<Transac
     q.accountIds = params.accountIds.join(',')
   if (params.types?.length)
     q.types = params.types.join(',')
+  if (params.tagIds?.length)
+    q.tagIds = params.tagIds.join(',')
   return http.get<TransactionListResult>('/transactions', q)
 }
 
@@ -105,4 +107,9 @@ export function reassignAccount(fromId: number, toId: number): Promise<{ migrate
 /** 新增一笔（快速记账弹层会调） */
 export function createTransaction(input: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> {
   return http.post<Transaction>('/transactions', input)
+}
+
+/** 批量打标：addTagIds 添加、removeTagIds 移除（只传其中一种也可） */
+export function batchTag(ids: number[], addTagIds: number[], removeTagIds: number[]): Promise<number> {
+  return http.post<number>('/transactions/batch-tag', { ids, addTagIds, removeTagIds })
 }

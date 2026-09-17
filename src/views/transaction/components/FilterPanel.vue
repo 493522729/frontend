@@ -8,6 +8,7 @@
  * 数据来源：dict store（跨页面共享），本组件只接收 filter 引用，避免重复加载。
  */
 import type { FilterState } from '../composables/useTransactionList'
+import type { Tag } from '@/types/tag'
 import type { Account, Category } from '@/types/transaction'
 import { NButton, NDatePicker, NInput, NSelect } from 'naive-ui'
 import { computed } from 'vue'
@@ -19,6 +20,7 @@ interface Props {
   filter: FilterState
   categories: Category[]
   accounts: Account[]
+  tags: Tag[]
 }
 
 const props = defineProps<Props>()
@@ -51,6 +53,7 @@ const endDate = field('endDate')
 const type = field('type')
 const accountIds = field('accountIds')
 const categoryIds = field('categoryIds')
+const tagIds = field('tagIds')
 const keyword = field('keyword')
 const status = field('status')
 
@@ -74,6 +77,8 @@ const typeOptions = computed(() => TRANSACTION_TYPES.map(value => dotOption(
 // 账户 / 分类都带图标：和右侧大表单元格里的图标风格对齐（Twemoji，见 renderEmojiLabel）
 const accountOptions = computed(() => props.accounts.map(a => emojiOption(a.icon, a.name, a.id)))
 const categoryOptions = computed(() => props.categories.map(c => emojiOption(c.icon, c.name, c.id)))
+// 标签：色点 + 名称（renderDotLabel）
+const tagOptions = computed(() => props.tags.map(t => dotOption(t.color, t.name, t.id)))
 
 function reset() {
   emit('reset')
@@ -150,6 +155,20 @@ function reset() {
           :input-props="{ 'aria-label': '分类筛选' }"
           multiple
           placeholder="全部分类"
+          filterable
+          clearable
+        />
+      </div>
+
+      <div class="field">
+        <span class="field-label">标签</span>
+        <NSelect
+          v-model:value="tagIds"
+          :options="tagOptions"
+          :render-label="renderDotLabel"
+          :input-props="{ 'aria-label': '标签筛选' }"
+          multiple
+          placeholder="全部标签"
           filterable
           clearable
         />

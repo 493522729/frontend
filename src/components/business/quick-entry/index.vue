@@ -4,6 +4,7 @@ import type { TransactionType } from '@/enums/transaction'
 import type { Transaction } from '@/types/transaction'
 import { NButton, useMessage, useNotification } from 'naive-ui'
 import { h, nextTick, reactive, ref, watch } from 'vue'
+import { createTag } from '@/api/modules/tag'
 import { createTransaction, deleteTransaction } from '@/api/modules/transaction'
 import { budgetAlertAfterSave } from '@/composables/budgetAlert'
 import { TRANSACTION_TYPE_META, TRANSACTION_TYPES } from '@/enums/transaction'
@@ -12,8 +13,9 @@ import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { useSettingsStore } from '@/stores/modules/settings'
+import { useTagStore } from '@/stores/modules/tag'
 import { formatCents, parseYuanToCents } from '@/utils/money'
-import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
+import { dotOption, emojiOption, renderDotLabel, renderEmojiLabel } from '@/utils/select-option'
 import { formatDate, today } from '@/utils/temporal'
 
 /**
@@ -35,11 +37,15 @@ const dict = useDictStore()
 const book = useBookStore()
 const accountStore = useAccountStore()
 const settings = useSettingsStore()
+const tagStore = useTagStore()
 const message = useMessage()
 const notification = useNotification()
 
 const amountInputRef = ref<InputInst | null>(null)
 const submitting = ref(false)
+
+const TAG_COLORS = ['#378ADD', '#0F6E56', '#993C1D', '#993556', '#854F0B', '#534AB7', '#1D9E75', '#D85A30', '#A32D2D', '#5F5E5A']
+let tagColorCursor = 0
 
 const form = reactive({
   type: 'expense' as TransactionType,
@@ -50,7 +56,38 @@ const form = reactive({
   toAccountId: null as number | null,
   transDate: formatDate(today()),
   note: '',
+  /** 标签：number = 已有标签，string = 待创建的新标签名 */
+  tagIds: [] as Array<number | string>,
 })
+
+/** 标签下拉选项（来自 tag store，色点 + 名称） */
+const tagOptions = computed(() => tagStore.tags.map(t => dotOption(t.color, t.name, t.id)))
+
+/**
+ * NSelect（multiple + tag）值变化：用户回车输入的「新名字」以字符串进入 value，
+ * 这里逐条识别并 createTag 入库，再把字符串替换成 id，保证提交时都是数字 id。
+ */
+async function onTagChange(val: Array<number | string>) {
+  const resolved: number[] = []
+  for (const v of val) {
+    if (typeof v === 'number') {
+      resolved.push(v)
+      continue
+    }
+    const name = String(v).trim()
+    if (!name)
+      continue
+    try {
+      const created = await createTag({ name, color: TAG_COLORS[tagColorCursor++ % TAG_COLORS.length]! })
+      tagStore.tags.push(created)
+      resolved.push(created.id)
+    }
+    catch {
+      message.error(`标签「${name}」创建失败`)
+    }
+  }
+  form.tagIds = resolved
+}
 
 // ── 分类选项：按类型过滤，转账不挂分类 ─────────────────
 const availableCategories = computed(() => {
@@ -128,6 +165,8 @@ watch(() => quickEntry.visible, async (visible) => {
     return
   // 账户按账本加载（dict 内部记账本标记，切过账本会重新拉）
   await dict.ensureLoaded(book.currentBookId)
+  // 标签是用户级资源，打开弹层时懒加载一次
+  void tagStore.ensureLoaded()
   // 余额（可用额度）来自账户 store，单独按需加载：它只在支出/转账时用于提示，
   // 不阻塞上面的字典加载，避免为了一句「可用 ¥x」把弹层打开变慢
   void accountStore.ensureLoaded()
@@ -192,6 +231,7 @@ function buildInput(): Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> {
     categoryId: isTransfer ? 0 : form.categoryId!,
     transDate: form.transDate,
     note: form.note.trim(),
+    tagIds: form.tagIds.filter((v): v is number => typeof v === 'number'),
     source: 'manual',
   }
 }
@@ -253,6 +293,7 @@ async function submit(closeAfter: boolean) {
     // 清空金额/备注、保留类型/分类/账户，聚焦金额准备下一笔
     form.amountText = ''
     form.note = ''
+    form.tagIds = []
     if (closeAfter) {
       quickEntry.close()
     }
@@ -384,6 +425,22 @@ useEventListener(document, 'keydown', onKeydown)
             :input-props="{ maxlength: 100 }"
           />
         </div>
+      </div>
+
+      <!-- 标签 -->
+      <div class="field">
+        <label class="field-label">标签</label>
+        <NSelect
+          :value="form.tagIds"
+          :options="tagOptions"
+          :render-label="renderDotLabel"
+          multiple
+          filterable
+          tag
+          placeholder="可选，输入新标签回车即创建"
+          :input-props="{ 'aria-label': '标签' }"
+          @update:value="(v: any) => onTagChange(v)"
+        />
       </div>
     </div>
 
