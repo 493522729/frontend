@@ -24,6 +24,8 @@ export const useSiteConfigStore = defineStore('siteConfig', () => {
     footerText: '本网站正在备案中',
     themeMode: undefined,
     amountColorMode: undefined,
+    mpTemplateBudget: undefined,
+    mpTemplateRemind: undefined,
   })
   const loading = ref(false)
 
@@ -45,6 +47,8 @@ export const useSiteConfigStore = defineStore('siteConfig', () => {
         footerText: data.footerText,
         themeMode: data.themeMode,
         amountColorMode: data.amountColorMode,
+        mpTemplateBudget: data.mpTemplateBudget,
+        mpTemplateRemind: data.mpTemplateRemind,
       }
       applyTheme()
     }
@@ -63,6 +67,8 @@ export const useSiteConfigStore = defineStore('siteConfig', () => {
       footerText: data.footerText,
       themeMode: data.themeMode,
       amountColorMode: data.amountColorMode,
+      mpTemplateBudget: data.mpTemplateBudget,
+      mpTemplateRemind: data.mpTemplateRemind,
     }
     applyTheme()
   }

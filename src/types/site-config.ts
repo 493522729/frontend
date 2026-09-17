@@ -17,6 +17,15 @@ export interface SiteConfig {
   themeMode?: ThemeMode
   /** 金额配色模式：income-green（收入绿·支出红）/ income-red（收入红·支出绿，A 股习惯） */
   amountColorMode?: AmountColorMode
+
+  /**
+   * 小程序订阅消息 · 「预算超 80%」模板 ID（微信 MP 后台申请到的）。
+   * 小程序端会把它拉到本地用于 wx.requestSubscribeMessage，所以这里是两端唯一的真相源。
+   * 留空 = 后端回退 `laozhao.mp.template-budget` 环境变量。
+   */
+  mpTemplateBudget?: string
+  /** 小程序订阅消息 · 「月初补记提醒」模板 ID（同上，留空回退环境变量） */
+  mpTemplateRemind?: string
 }
 
 export type SiteConfigUpdate = Partial<SiteConfig>

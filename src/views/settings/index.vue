@@ -69,12 +69,26 @@ const icpForm = reactive({
   icpLink: '',
 })
 
+// ── 小程序订阅消息模板 ────────────────────────────────────────────
+/**
+ * 两个模板 ID 是站点级配置，也是小程序端的唯一真相源：
+ * 小程序进预算页时会把它同步到本地，用于 wx.requestSubscribeMessage。
+ * 留空 = 后端回退 `laozhao.mp.template-*` 环境变量，所以清空是合法操作。
+ */
+const mpSubmitting = ref(false)
+const mpForm = reactive({
+  mpTemplateBudget: '',
+  mpTemplateRemind: '',
+})
+
 onMounted(async () => {
   await siteConfig.load()
   icpForm.showFooter = siteConfig.config.showFooter
   icpForm.footerText = siteConfig.config.footerText ?? ''
   icpForm.icpNo = siteConfig.config.icpNo ?? ''
   icpForm.icpLink = siteConfig.config.icpLink ?? ''
+  mpForm.mpTemplateBudget = siteConfig.config.mpTemplateBudget ?? ''
+  mpForm.mpTemplateRemind = siteConfig.config.mpTemplateRemind ?? ''
 })
 
 async function onSaveIcp() {
@@ -87,6 +101,32 @@ async function onSaveIcp() {
   }
   finally {
     icpSubmitting.value = false
+  }
+}
+
+/** 模板 ID 的校验：微信没公开字符集，只卡明显填错的（空格 / 超长），别把真 ID 拦在门外 */
+function mpTemplateInvalid(value: string): boolean {
+  const v = value.trim()
+  return v.length > 0 && (/\s/.test(v) || v.length > 128)
+}
+
+async function onSaveMp() {
+  if (mpSubmitting.value)
+    return
+  if (mpTemplateInvalid(mpForm.mpTemplateBudget) || mpTemplateInvalid(mpForm.mpTemplateRemind)) {
+    message.error('模板 ID 不能有空格，长度也别超过 128')
+    return
+  }
+  mpSubmitting.value = true
+  try {
+    await siteConfig.update({
+      mpTemplateBudget: mpForm.mpTemplateBudget.trim(),
+      mpTemplateRemind: mpForm.mpTemplateRemind.trim(),
+    })
+    message.success('已保存，小程序端会自动用新模板')
+  }
+  finally {
+    mpSubmitting.value = false
   }
 }
 
@@ -271,6 +311,40 @@ async function onChangePwdSubmit() {
           </NButton>
         </NFormItem>
       </NForm>
+    </section>
+
+    <section class="setting-card">
+      <div class="setting-head">
+        <h2 class="setting-title">
+          小程序订阅消息
+        </h2>
+        <span class="setting-hint">模板在微信 MP 后台「订阅消息」申请，小程序端会自动同步</span>
+      </div>
+      <NForm label-placement="top" :show-feedback="false">
+        <NFormItem label="预算提醒模板 ID">
+          <NInput
+            v-model:value="mpForm.mpTemplateBudget"
+            placeholder="预算用到 80% 时提醒（「记账预算提醒」）"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem label="月初补记提醒模板 ID">
+          <NInput
+            v-model:value="mpForm.mpTemplateRemind"
+            placeholder="留空 = 暂不使用该场景"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem>
+          <NButton type="primary" :loading="mpSubmitting" @click="onSaveMp">
+            保存模板 ID
+          </NButton>
+        </NFormItem>
+      </NForm>
+      <p class="setting-note">
+        留空会让后端回退到 <code>laozhao.mp.template-*</code> 环境变量；保存即刻生效，不用重启后端。
+        小程序在进入预算页时拉取这两个值，因此手机上无需再手填。
+      </p>
     </section>
 
     <!-- 微信绑定入口已统一收口到「账号设置」页（views/profile），这里不再重复 -->
