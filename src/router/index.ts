@@ -118,4 +118,26 @@ const router = createRouter({
 
 setupRouterGuards(router)
 
+/**
+ * 发版后 chunk 失效自愈：
+ * 用户页面开着没刷新，此时发了新版，旧页面内存里的路由仍指向旧 hash 的
+ * 动态导入 chunk，服务器上该文件已被替换 → 点击菜单时报
+ * "Failed to fetch dynamically imported module"，页面卡死。
+ * 捕获后整页刷新一次拿最新 index.html 即恢复。
+ * sessionStorage 按「目标路径」记录，同一路径只自动刷一次，避免部署真坏了时无限刷新。
+ */
+router.onError((error, to) => {
+  const msg = error.message || ''
+  const isChunkError = msg.includes('Failed to fetch dynamically imported module')
+    || msg.includes('error loading dynamically imported module')
+    || msg.includes('Importing a module script failed')
+  if (!isChunkError)
+    return
+  const key = 'lz:chunk-reload-path'
+  if (sessionStorage.getItem(key) === to.fullPath)
+    return
+  sessionStorage.setItem(key, to.fullPath)
+  window.location.assign(to.fullPath)
+})
+
 export default router
