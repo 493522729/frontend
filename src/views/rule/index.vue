@@ -167,7 +167,13 @@ async function onToggle(rule: Rule) {
 }
 
 // ── 条件/动作编辑器 ──────────────────────────────────────
+/** 条件上限：防止误连点把弹窗撑爆（引擎语义上 10 条也足够） */
+const MAX_CONDITIONS = 10
 function addCondition() {
+  if (form.conditions.length >= MAX_CONDITIONS) {
+    message.warning(`最多 ${MAX_CONDITIONS} 条条件`)
+    return
+  }
   form.conditions.push({ field: 'note', op: 'contains', value: '' })
 }
 function removeCondition(idx: number) {
@@ -184,7 +190,13 @@ function onConditionFieldChange(idx: number, field: RuleField) {
   c.value = ''
 }
 
+/** 动作上限：与条件同样防止撑爆弹窗 */
+const MAX_ACTIONS = 5
 function addAction() {
+  if (form.actions.length >= MAX_ACTIONS) {
+    message.warning(`最多 ${MAX_ACTIONS} 个动作`)
+    return
+  }
   form.actions.push({ type: 'setCategory', payload: { categoryId: 0 } })
 }
 function removeAction(idx: number) {
@@ -447,52 +459,56 @@ const hasResult = computed(() => ruleStore.list.length > 0)
                 满足任一（OR）
               </NRadioButton>
             </NRadioGroup>
-            <NButton size="tiny" @click="addCondition">
-              + 添加
+            <NButton size="tiny" :disabled="form.conditions.length >= MAX_CONDITIONS" @click="addCondition">
+              + 添加{{ form.conditions.length >= MAX_CONDITIONS ? `（已达 ${MAX_CONDITIONS} 条）` : '' }}
             </NButton>
           </div>
-          <NSpace vertical size="small">
-            <div v-for="(c, idx) in form.conditions" :key="idx" class="form-row">
-              <NSelect
-                :value="c.field"
-                :options="RULE_FIELDS"
-                style="width: 140px"
-                @update:value="v => onConditionFieldChange(idx, v as RuleField)"
-              />
-              <NSelect
-                v-model:value="c.op"
-                :options="operatorOptions(c.field)"
-                style="width: 110px"
-              />
-              <NInputNumber v-if="c.field === 'amount'" v-model:value="c.value as number" :show-button="false" placeholder="金额（分）" style="width: 120px" />
-              <NSelect v-else-if="c.field === 'type'" :value="c.value as string" :options="typeValueOptions" :render-label="renderDotLabel" placeholder="选择类型" style="width: 140px" @update:value="v => (c.value = String(v))" />
-              <NInput v-else :value="c.value as string" :placeholder="FIELD_DEFAULTS[c.field]" style="flex: 1" @update:value="v => (c.value = String(v))" />
-              <NButton v-if="form.conditions.length > 1" text type="error" @click="removeCondition(idx)">
-                删除
-              </NButton>
-            </div>
-          </NSpace>
+          <div class="cond-scroll">
+            <NSpace vertical size="small">
+              <div v-for="(c, idx) in form.conditions" :key="idx" class="form-row">
+                <NSelect
+                  :value="c.field"
+                  :options="RULE_FIELDS"
+                  style="width: 140px"
+                  @update:value="v => onConditionFieldChange(idx, v as RuleField)"
+                />
+                <NSelect
+                  v-model:value="c.op"
+                  :options="operatorOptions(c.field)"
+                  style="width: 110px"
+                />
+                <NInputNumber v-if="c.field === 'amount'" v-model:value="c.value as number" :show-button="false" placeholder="金额（分）" style="width: 120px" />
+                <NSelect v-else-if="c.field === 'type'" :value="c.value as string" :options="typeValueOptions" :render-label="renderDotLabel" placeholder="选择类型" style="width: 140px" @update:value="v => (c.value = String(v))" />
+                <NInput v-else :value="c.value as string" :placeholder="FIELD_DEFAULTS[c.field]" style="flex: 1" @update:value="v => (c.value = String(v))" />
+                <NButton v-if="form.conditions.length > 1" text type="error" @click="removeCondition(idx)">
+                  删除
+                </NButton>
+              </div>
+            </NSpace>
+          </div>
         </div>
 
         <div>
           <div class="form-section-head">
             <label class="form-label">动作（按顺序应用）</label>
-            <NButton size="tiny" @click="addAction">
-              + 添加
+            <NButton size="tiny" :disabled="form.actions.length >= MAX_ACTIONS" @click="addAction">
+              + 添加{{ form.actions.length >= MAX_ACTIONS ? `（已达 ${MAX_ACTIONS} 个）` : '' }}
             </NButton>
           </div>
-          <NSpace vertical size="small">
-            <div v-for="(a, idx) in form.actions" :key="idx" class="form-row">
-              <NSelect :value="a.type" :options="RULE_ACTIONS.map(o => ({ label: o.label, value: o.value }))" style="width: 140px" @update:value="v => (a.type = v as typeof a.type)" />
-              <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId || undefined" :options="categorySelectOptions" :render-label="renderEmojiLabel" placeholder="选择分类" clearable style="flex: 1" @update:value="v => (a.payload.categoryId = v || 0)" />
-              <NInput v-else-if="a.type === 'appendNote'" :value="a.payload.suffix as string" placeholder="追加文本" style="flex: 1" @update:value="v => (a.payload.suffix = v)" />
-              <NSelect v-else-if="a.type === 'addTag'" :value="(a.payload.tagId as number) || undefined" :options="tagOptions" :render-label="renderDotLabel" placeholder="选择标签" clearable filterable style="flex: 1" @update:value="v => onAddTagChange(a, v as number | null)" />
-              <NInput v-else :value="a.payload.message as string" placeholder="通知文案" style="flex: 1" @update:value="v => (a.payload.message = v)" />
-              <NButton v-if="form.actions.length > 1" text type="error" @click="removeAction(idx)">
-                删除
-              </NButton>
-            </div>
-          </NSpace>
+          <div class="cond-scroll">
+            <NSpace vertical size="small">
+              <div v-for="(a, idx) in form.actions" :key="idx" class="form-row">
+                <NSelect :value="a.type" :options="RULE_ACTIONS.map(o => ({ label: o.label, value: o.value }))" style="width: 140px" @update:value="v => (a.type = v as typeof a.type)" />
+                <NSelect v-if="a.type === 'setCategory'" :value="a.payload.categoryId || undefined" :options="categorySelectOptions" :render-label="renderEmojiLabel" placeholder="选择分类" clearable style="flex: 1" @update:value="v => (a.payload.categoryId = v || 0)" />
+                <NInput v-else-if="a.type === 'appendNote'" :value="a.payload.suffix as string" placeholder="追加文本" style="flex: 1" @update:value="v => (a.payload.suffix = v)" />
+                <NSelect v-else-if="a.type === 'addTag'" :value="(a.payload.tagId as number) || undefined" :options="tagOptions" :render-label="renderDotLabel" placeholder="选择标签" clearable filterable style="flex: 1" @update:value="v => onAddTagChange(a, v as number | null)" />
+                <NInput v-else :value="a.payload.message as string" placeholder="通知文案" style="flex: 1" @update:value="v => (a.payload.message = v)" />
+                <NButton v-if="form.actions.length > 1" text type="error" @click="removeAction(idx)">
+                  删除
+                </NButton>
+              </div>
+            </NSpace>
+          </div>
         </div>
 
         <NCheckbox v-model:checked="form.active">
@@ -642,6 +658,12 @@ const hasResult = computed(() => ruleStore.list.length > 0)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
+}
+/* 条件列表限高滚动：避免条件多时把弹窗撑出屏幕 */
+.cond-scroll {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .form-row {
   display: flex;
