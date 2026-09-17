@@ -158,7 +158,17 @@ const wxBound = computed(() => Boolean(user.value?.wxBound))
 const showBindModal = ref(false)
 const showUnbindModal = ref(false)
 
-function onWechatAction() {
+/**
+ * 点微信那一行：**先拉一次最新状态，再决定开哪个弹窗**。
+ *
+ * 为什么不能直接用 wxBound.value 判断：它可能已经是陈旧的 ——
+ * 小程序端解绑、或另一台设备绑定都会悄悄改掉后端的 wx_openid，
+ * 而页面上的值要等 visibilitychange 才会刷新。
+ * 于是会出现「显示已绑定 → 点『解除绑定』→ 后端说本来就没绑 / 密码不对」这种自相矛盾的体验。
+ * 先刷新一次（一次 GET，很轻），分派就永远基于真实状态。
+ */
+async function onWechatAction() {
+  await auth.refreshProfile()
   if (wxBound.value)
     showUnbindModal.value = true
   else
@@ -174,14 +184,26 @@ async function onWechatSuccess() {
  * 跨端兜底：小程序端方案 B（输密码绑定）或另一台设备完成绑定/解绑时，
  * 网页端没有扫码会话通知，不会主动刷新。回到本标签页时拉一次最新 profile，
  * 保证「已绑定/未绑定」状态及时同步，避免出现「手机已绑定、网页没变化」。
+ *
+ * ⚠️ 两个事件都要听（2026-09-17 补）：
+ *   · `visibilitychange` 只在页面**被隐藏**时触发（切 tab、最小化、切到别的应用）。
+ *   · 窗口仅仅**失去焦点**（被别的窗口盖住但没最小化）时，`visibilityState` 仍是
+ *     `'visible'`，那个事件根本不触发 —— 这时切回来就看不到最新状态。
+ *   ⇒ 补一个 `window.focus`，两者一起才覆盖得住「去手机上操作一下再回来」这个场景。
  */
 function refreshOnVisible() {
   if (document.visibilityState === 'visible')
     void auth.refreshProfile()
 }
 
-onMounted(() => document.addEventListener('visibilitychange', refreshOnVisible))
-onUnmounted(() => document.removeEventListener('visibilitychange', refreshOnVisible))
+onMounted(() => {
+  document.addEventListener('visibilitychange', refreshOnVisible)
+  window.addEventListener('focus', refreshOnVisible)
+})
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', refreshOnVisible)
+  window.removeEventListener('focus', refreshOnVisible)
+})
 
 // ── 退出登录 ─────────────────────────────────────────────
 async function handleLogout() {
