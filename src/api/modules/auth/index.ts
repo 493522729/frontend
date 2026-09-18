@@ -222,3 +222,20 @@ export function cancelScanBindSession(qrId: string): Promise<void> {
 export function unbindWechat(password: string): Promise<void> {
   return http.delete<void>('/user/wx', { data: { password } })
 }
+
+/**
+ * 注销账号（**永久删除**，不可恢复）。与 `unbindWechat` 同门、同一套写法。
+ *
+ * ⚠️ 身份校验**二选一**（与后端 `DeleteAccountRequest` 对齐）：
+ *   · `code`：小程序 `wx.login` 的临时凭证，服务端换出 openid 与账号绑定的比对；
+ *   · `password`：账号密码。
+ *   **网页端只能给 `password`** —— 浏览器里拿不到 `wx.login` 的 code。
+ *   于是「微信扫码时自动创建（`source=wx_auto`）、密码是随机串」的账号，
+ *   在网页端**注销不了**：那种账号要引导去小程序（profile 页的注销弹框里写了这句）。
+ *
+ * ⚠️ 走 `DELETE /user`（**带请求体**），与既有的 `DELETE /user/wx` 保持一致 ——
+ *    同一个「账号生命周期」的语义用同一个方法与同一套封装，别改成 POST。
+ */
+export function deleteAccount(params: { code?: string, password?: string }): Promise<void> {
+  return http.delete<void>('/user', { data: params })
+}

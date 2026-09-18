@@ -48,7 +48,13 @@ export interface BookMember {
   username: string
   /** 昵称：有则显示，无则回落 username */
   nickname: string
-  /** 头像 url，可能为空 */
+  /**
+   * 头像：**可直接渲染的图片串**，可为空。
+   *
+   * ⚠️ 它**不是外链 URL**：当前实现存的是压缩后的 base64 data-URL
+   * （见 `views/profile` 的头像上传：128×128 JPEG → `canvas.toDataURL`），
+   * 且小程序端上传的同理 ⇒ 别想着给它拼域名前缀，直接当 `<img :src>` 用。
+   */
   avatar: string | null
   /** 角色 */
   role: MemberRole

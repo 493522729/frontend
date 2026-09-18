@@ -260,6 +260,13 @@ onMounted(() => book.ensureLoaded())
                 <span class="book-card__name">{{ b.name }}</span>
                 <span class="book-card__type">{{ bookTypeLabel(b.type) }}</span>
               </div>
+              <!--
+                归属标签：个人账本也标出来（与「共享」同一套位置与尺寸）。
+                为什么要标「个人」而不是只标「共享」：**无声的默认最容易让人误会** ——
+                只标共享的话，一张没标签的卡片没法自解释，用户分不清它是个人账本还是标签没渲染出来；
+                而分组标题往下滚就看不见了，卡片得自己说清。（小程序「我的」页那张卡片同一套语言）
+              -->
+              <span class="book-tag book-tag--personal">个人</span>
               <span v-if="b.isDefault" class="book-tag book-tag--default">默认</span>
               <span v-if="b.id === currentId" class="book-tag book-tag--current">当前</span>
             </div>
@@ -552,6 +559,15 @@ onMounted(() => book.ensureLoaded())
   &--shared {
     color: var(--lz-primary-700);
     background: var(--lz-primary-50);
+  }
+
+  /*
+   * 「个人」：安静的中性底 —— 它是默认态，不该抢眼，但「是哪种」要一眼看得出来。
+   * 与「共享」（主色，强调）形成强弱对比；token 与小程序那边同一对（--lz-info / --lz-info-bg）。
+   */
+  &--personal {
+    color: var(--lz-info);
+    background: var(--lz-info-bg);
   }
 }
 

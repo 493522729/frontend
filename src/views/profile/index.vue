@@ -2,6 +2,7 @@
 import type { UserInfo } from '@/api/modules/user'
 import { NButton, NInput, NModal, useMessage } from 'naive-ui'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { deleteAccount } from '@/api/modules/auth'
 import { userApi } from '@/api/modules/user'
 import WechatBindModal from '@/components/WechatBindModal.vue'
 import { useAuthStore } from '@/stores/modules/auth'
@@ -210,6 +211,55 @@ async function handleLogout() {
   await auth.logout()
   await router.push('/login')
 }
+
+// ── 注销账号（自助销户）──────────────────────────────────
+/**
+ * 为什么单独一张卡、且离「退出登录」远远的：
+ *   · 注销是**永久删除、不可恢复**（后端 `AuthService.deleteAccount` 里直接物理删除），
+ *     和「退出登录」并排放太容易被顺手点到 —— 后者只是登出，数据都还在；
+ *   · 但「提供自助注销能力」是合规硬要求（工信部，也是小程序提审常查项）⇒ 必须让用户找得到。
+ *
+ * ⚠️ 网页端**只能验密码**：后端二选一是 `code`（小程序 `wx.login` 的临时凭证）/ `password`，
+ *    浏览器里拿不到 `code`。于是「微信扫码时自动创建（source=wx_auto）、密码是随机串」的账号
+ *    在网页端注销不了 ⇒ 那种账号要引导去小程序（这句写在弹框里，让用户**试之前**就知道）。
+ */
+const deleteVisible = ref(false)
+const deletePassword = ref('')
+const deleteSubmitting = ref(false)
+/** 内联错误：身份校验失败要贴着输入框、留着等重试（用 message 一闪就过去了） */
+const deleteError = ref('')
+
+function openDeleteAccount() {
+  deletePassword.value = ''
+  deleteError.value = ''
+  deleteVisible.value = true
+}
+
+async function submitDeleteAccount() {
+  const password = deletePassword.value
+  if (!password) {
+    deleteError.value = '请输入登录密码完成身份验证'
+    return false
+  }
+  deleteSubmitting.value = true
+  deleteError.value = ''
+  try {
+    await deleteAccount({ password })
+    // 账号已经没了：立刻作废本地登录态，别留着 token 去请求一个不存在的账号
+    await auth.logout()
+    deleteVisible.value = false
+    message.success('账号已注销')
+    await router.push('/login')
+  }
+  catch (err) {
+    // 后端的人话直接展示（「密码错误，无法注销」/「请先输入账号密码完成身份验证」）
+    deleteError.value = err instanceof Error ? err.message : '注销失败，请稍后重试'
+    return false // 弹框留着，用户可以直接重试
+  }
+  finally {
+    deleteSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -304,6 +354,27 @@ async function handleLogout() {
       </div>
     </section>
 
+    <!--
+      注销账号：**单独一张卡**，不塞进上面的「账号操作」——
+      它和「退出登录」完全是两回事（后者只是登出，数据都还在），并排放很容易被顺手点到。
+    -->
+    <section class="profile-card">
+      <h2 class="card-title">
+        注销账号
+      </h2>
+      <div class="card-body">
+        <div class="profile-row">
+          <div class="row-meta">
+            <span class="row-label">注销账号</span>
+            <span class="row-desc">永久删除账号与全部数据，不可恢复</span>
+          </div>
+          <NButton size="small" type="error" ghost @click="openDeleteAccount">
+            注销账号
+          </NButton>
+        </div>
+      </div>
+    </section>
+
     <!-- 昵称弹窗 -->
     <NModal
       v-model:show="nicknameVisible"
@@ -328,6 +399,41 @@ async function handleLogout() {
       @positive-click="submitPhone"
     >
       <NInput v-model:value="phoneDraft" placeholder="请输入手机号" maxlength="11" />
+    </NModal>
+
+    <!--
+      注销确认：把「删什么 / 不可恢复 / 怎么验证身份」一次说清。
+      ⚠️ 网页端只能验密码（浏览器里拿不到小程序的 wx.login 凭证），所以那句「去小程序注销」的
+         出路必须**提前**摆出来 —— 别让用户输半天密码才被告知「验证不了」。
+    -->
+    <NModal
+      v-model:show="deleteVisible"
+      preset="dialog"
+      title="注销账号"
+      positive-text="永久删除账号"
+      negative-text="取消"
+      :loading="deleteSubmitting"
+      :positive-button-props="{ type: 'error' }"
+      @positive-click="submitDeleteAccount"
+    >
+      <p class="delete-warn">
+        注销会<strong>永久删除</strong>该账号下的全部账本、流水、账户、预算、分类、标签与规则，
+        并解除微信绑定，<strong>不可恢复</strong>。
+      </p>
+      <NInput
+        v-model:value="deletePassword"
+        type="password"
+        show-password-on="click"
+        placeholder="请输入登录密码以验证身份"
+        @keyup.enter="submitDeleteAccount"
+      />
+      <p v-if="deleteError" class="delete-error">
+        {{ deleteError }}
+      </p>
+      <p class="delete-hint">
+        若这个账号是微信扫码时自动创建的（从没设置过密码），请到小程序「我的 → 设置 → 注销账号」完成 ——
+        那边能直接用微信身份验证。
+      </p>
     </NModal>
 
     <!-- 微信绑定 / 解绑（MP-ADR-5，与设置页共用同一个弹窗） -->
@@ -474,5 +580,33 @@ async function handleLogout() {
   height: 0;
   opacity: 0;
   pointer-events: none;
+}
+
+/* ── 注销账号弹框 ───────────────────────────────────────── */
+
+.delete-warn {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lz-text-regular);
+
+  strong {
+    color: var(--lz-text-primary);
+  }
+}
+
+/* 身份校验失败：贴着输入框、留着等用户重试（不用 message —— 那个一闪就没了，够不着重试） */
+.delete-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lz-danger);
+}
+
+.delete-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lz-text-secondary);
 }
 </style>
