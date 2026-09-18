@@ -25,6 +25,7 @@ import { useHotkey } from '@/composables/useHotkey'
 import { useIsMobile } from '@/composables/useIsMobile'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
 import { TRANSACTION_SOURCE_META, TRANSACTION_TYPE_META } from '@/enums/transaction'
+import { useBookStore } from '@/stores/modules/book'
 import { useDictStore } from '@/stores/modules/dict'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
 import { useSettingsStore } from '@/stores/modules/settings'
@@ -35,6 +36,10 @@ import { ensureVxeTable } from './_vxe-bootstrap'
 import FilterPanel from './components/FilterPanel.vue'
 import MobileTxnList from './components/MobileTxnList.vue'
 import { useTransactionList } from './composables/useTransactionList'
+
+const bookStore = useBookStore()
+// 共享账本才显示「谁记的」—— 个人账本记录者恒为本人，显示是噪音
+const isSharedBook = computed(() => bookStore.currentBook?.scope === 'SHARED')
 
 // vxe-table 4.x 的 TS 类型对自定义插槽支持不全 —— 官方类型只覆盖内置 slot，
 // 自定义 slot 名（如 type_cell / category_cell 等）会报 "Property X does not exist on type VxeTableSlots<any>"
@@ -1056,6 +1061,15 @@ async function onConfirmBatch() {
                   class="status-pending"
                 >
                   待确认
+                </NTag>
+                <NTag
+                  v-if="isSharedBook && (row as Transaction).recordedByUsername"
+                  size="small"
+                  :bordered="false"
+                  type="default"
+                  class="recorder-tag"
+                >
+                  ✍️ {{ (row as Transaction).recordedByUsername }}
                 </NTag>
               </template>
 

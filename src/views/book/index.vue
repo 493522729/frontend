@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { BookType } from '@/enums/book'
+import type { BookScope, BookType } from '@/enums/book'
 import type { BookWithStats } from '@/types/book'
-import { NButton, NInput, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NDrawer, NDrawerContent, NInput, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
-import { BOOK_TYPE_META, BOOK_TYPES } from '@/enums/book'
+import { BOOK_SCOPE_META, BOOK_SCOPES, BOOK_TYPE_CUSTOM, BOOK_TYPE_META, BOOK_TYPES, bookTypeIcon, bookTypeLabel } from '@/enums/book'
 import { useBookStore } from '@/stores/modules/book'
+import BookMemberDrawer from './BookMemberDrawer.vue'
 
 /**
  * 账本管理页（Now 清单 #2，PRD §15.2.1）
@@ -23,7 +24,15 @@ const books = computed<BookWithStats[]>(() => book.books)
 const currentId = computed(() => book.currentBookId)
 const showEmpty = computed(() => !book.loading && books.value.length === 0)
 
-const typeOptions = BOOK_TYPES.map(t => ({ label: BOOK_TYPE_META[t].label, value: t }))
+const typeOptions = [
+  ...BOOK_TYPES.map(t => ({ label: BOOK_TYPE_META[t]!.label, value: t })),
+  { label: '自定义…', value: BOOK_TYPE_CUSTOM },
+]
+const scopeOptions = BOOK_SCOPES.map(s => ({ label: `${BOOK_SCOPE_META[s].icon} ${BOOK_SCOPE_META[s].label}`, value: s }))
+
+// 按归属范围分组：个人 / 共享
+const personalBooks = computed(() => books.value.filter(b => b.scope !== 'SHARED'))
+const sharedBooks = computed(() => books.value.filter(b => b.scope === 'SHARED'))
 
 // ── 表单弹层 ─────────────────────────────────────────────
 const formVisible = ref(false)
@@ -32,46 +41,86 @@ const editingId = ref<number | null>(null)
 const form = reactive({
   name: '',
   type: 'daily' as BookType,
+  /** 自定义类型文本（type === BOOK_TYPE_CUSTOM 时生效，入库的就是它） */
+  customType: '',
   icon: '🏠',
   isDefault: false,
+  scope: 'PERSONAL' as BookScope,
 })
 
 function openCreate() {
   editingId.value = null
   form.name = ''
   form.type = 'daily'
-  form.icon = BOOK_TYPE_META.daily.icon
+  form.customType = ''
+  form.icon = BOOK_TYPE_META.daily!.icon
   form.isDefault = false
+  form.scope = 'PERSONAL'
   formVisible.value = true
 }
 
 function openEdit(b: BookWithStats) {
   editingId.value = b.id
   form.name = b.name
-  form.type = b.type
+  // 预设类型直接回填；自定义类型（不在预设里）切到「自定义」并还原文本
+  if (BOOK_TYPES.includes(b.type as never)) {
+    form.type = b.type
+    form.customType = ''
+  }
+  else {
+    form.type = BOOK_TYPE_CUSTOM
+    form.customType = b.type
+  }
   form.icon = b.icon
   form.isDefault = b.isDefault
+  form.scope = b.scope ?? 'PERSONAL'
   formVisible.value = true
 }
 
-// 切类型时，若图标仍是上一种类型的默认图标（或为空），自动补成新类型的默认图标
-watch(() => form.type, (type, prev) => {
-  if (!form.icon || form.icon === BOOK_TYPE_META[prev]?.icon)
-    form.icon = BOOK_TYPE_META[type].icon
+// ── 成员管理抽屉 ─────────────────────────────────────────
+const memberDrawer = reactive({
+  visible: false,
+  bookId: 0,
+  bookName: '',
 })
+function openMembers(b: BookWithStats) {
+  memberDrawer.bookId = b.id
+  memberDrawer.bookName = b.name
+  memberDrawer.visible = true
+}
+function onMemberChanged() {
+  // 成员数可能变化，刷新账本摘要
+  book.refresh()
+}
+
+// 切类型时，若图标仍是上一种类型的默认图标（或为空），自动补成新类型的默认图标；
+// 切到「自定义」则不动图标（用户自己填 emoji，卡片有通用兜底）
+watch(() => form.type, (type, prev) => {
+  if (type === BOOK_TYPE_CUSTOM)
+    return
+  if (!form.icon || form.icon === BOOK_TYPE_META[prev]?.icon)
+    form.icon = BOOK_TYPE_META[type]?.icon ?? '📒'
+})
+
+/** 实际入库的类型值：预设→id；自定义→用户填的文本 */
+const resolvedType = computed(() =>
+  form.type === BOOK_TYPE_CUSTOM ? form.customType.trim() : form.type,
+)
 
 async function submitForm() {
   const name = form.name.trim()
   if (!name)
     return message.warning('请输入账本名称')
+  if (form.type === BOOK_TYPE_CUSTOM && !resolvedType.value)
+    return message.warning('请输入自定义类型名称')
   submitting.value = true
   try {
     if (editingId.value == null) {
-      await book.createBookEntry({ name, type: form.type, icon: form.icon, isDefault: form.isDefault, currency: 'CNY' })
+      await book.createBookEntry({ name, type: resolvedType.value, icon: form.icon, isDefault: form.isDefault, currency: 'CNY', scope: form.scope })
       message.success('账本已创建')
     }
     else {
-      await book.updateBookEntry(editingId.value, { name, type: form.type, icon: form.icon, isDefault: form.isDefault })
+      await book.updateBookEntry(editingId.value, { name, type: resolvedType.value, icon: form.icon, isDefault: form.isDefault })
       message.success('账本已更新')
     }
     formVisible.value = false
@@ -130,51 +179,121 @@ onMounted(() => book.ensureLoaded())
       </NButton>
     </header>
 
-    <div v-if="books.length > 0" class="book-grid">
-      <article
-        v-for="b in books"
-        :key="b.id"
-        class="book-card"
-        :class="{ 'book-card--current': b.id === currentId }"
-      >
-        <div class="book-card__head">
-          <span class="book-card__icon">{{ b.icon || BOOK_TYPE_META[b.type].icon }}</span>
-          <div class="book-card__titles">
-            <span class="book-card__name">{{ b.name }}</span>
-            <span class="book-card__type">{{ BOOK_TYPE_META[b.type].label }}</span>
-          </div>
-          <span v-if="b.isDefault" class="book-tag book-tag--default">默认</span>
-          <span v-if="b.id === currentId" class="book-tag book-tag--current">当前</span>
-        </div>
-
-        <div class="book-card__stats">
-          <div class="stat">
-            <span class="stat__num">{{ b.txnCount.toLocaleString('zh-CN') }}</span>
-            <span class="stat__label">笔交易</span>
-          </div>
-          <div class="stat">
-            <span class="stat__num">{{ b.accountCount }}</span>
-            <span class="stat__label">个账户</span>
-          </div>
-        </div>
-
-        <div class="book-card__actions">
-          <NButton
-            v-if="!b.isDefault"
-            size="small"
-            tertiary
-            @click="setDefault(b)"
+    <div v-if="books.length > 0" class="book-sections">
+      <!-- 共享账本：家庭 / 情侣 / 合租 / 小生意共记 -->
+      <section v-if="sharedBooks.length" class="book-section">
+        <h2 class="section-title">
+          <span class="section-emoji">👥</span> 共享账本
+          <span class="section-hint">和家人朋友一起记</span>
+        </h2>
+        <div class="book-grid">
+          <article
+            v-for="b in sharedBooks"
+            :key="b.id"
+            class="book-card"
+            :class="{ 'book-card--current': b.id === currentId }"
           >
-            设为默认
-          </NButton>
-          <NButton size="small" tertiary @click="openEdit(b)">
-            编辑
-          </NButton>
-          <NButton size="small" tertiary type="error" @click="openDelete(b)">
-            删除
-          </NButton>
+            <div class="book-card__head">
+              <span class="book-card__icon">{{ b.icon || bookTypeIcon(b.type) }}</span>
+              <div class="book-card__titles">
+                <span class="book-card__name">{{ b.name }}</span>
+                <span class="book-card__type">{{ bookTypeLabel(b.type) }}</span>
+              </div>
+              <span v-if="b.scope === 'SHARED'" class="book-tag book-tag--shared">共享</span>
+              <span v-if="b.isDefault" class="book-tag book-tag--default">默认</span>
+              <span v-if="b.id === currentId" class="book-tag book-tag--current">当前</span>
+            </div>
+
+            <div class="book-card__stats">
+              <div class="stat">
+                <span class="stat__num">{{ b.txnCount.toLocaleString('zh-CN') }}</span>
+                <span class="stat__label">笔交易</span>
+              </div>
+              <div class="stat">
+                <span class="stat__num">{{ b.accountCount }}</span>
+                <span class="stat__label">个账户</span>
+              </div>
+              <div class="stat">
+                <span class="stat__num">{{ b.memberCount ?? 1 }}</span>
+                <span class="stat__label">位成员</span>
+              </div>
+            </div>
+
+            <div class="book-card__actions">
+              <NButton size="small" tertiary @click="openMembers(b)">
+                成员
+              </NButton>
+              <NButton
+                v-if="!b.isDefault"
+                size="small"
+                tertiary
+                @click="setDefault(b)"
+              >
+                设为默认
+              </NButton>
+              <NButton size="small" tertiary @click="openEdit(b)">
+                编辑
+              </NButton>
+              <NButton size="small" tertiary type="error" @click="openDelete(b)">
+                删除
+              </NButton>
+            </div>
+          </article>
         </div>
-      </article>
+      </section>
+
+      <!-- 个人账本 -->
+      <section v-if="personalBooks.length" class="book-section">
+        <h2 class="section-title">
+          <span class="section-emoji">🙋</span> 我的账本
+        </h2>
+        <div class="book-grid">
+          <article
+            v-for="b in personalBooks"
+            :key="b.id"
+            class="book-card"
+            :class="{ 'book-card--current': b.id === currentId }"
+          >
+            <div class="book-card__head">
+              <span class="book-card__icon">{{ b.icon || bookTypeIcon(b.type) }}</span>
+              <div class="book-card__titles">
+                <span class="book-card__name">{{ b.name }}</span>
+                <span class="book-card__type">{{ bookTypeLabel(b.type) }}</span>
+              </div>
+              <span v-if="b.isDefault" class="book-tag book-tag--default">默认</span>
+              <span v-if="b.id === currentId" class="book-tag book-tag--current">当前</span>
+            </div>
+
+            <div class="book-card__stats">
+              <div class="stat">
+                <span class="stat__num">{{ b.txnCount.toLocaleString('zh-CN') }}</span>
+                <span class="stat__label">笔交易</span>
+              </div>
+              <div class="stat">
+                <span class="stat__num">{{ b.accountCount }}</span>
+                <span class="stat__label">个账户</span>
+              </div>
+            </div>
+
+            <div class="book-card__actions">
+              <NButton
+                v-if="!b.isDefault"
+                size="small"
+                tertiary
+                @click="setDefault(b)"
+              >
+                设为默认
+              </NButton>
+              <NButton size="small" tertiary @click="openEdit(b)">
+                编辑
+              </NButton>
+              <NButton size="small" tertiary type="error" @click="openDelete(b)">
+                删除
+              </NButton>
+            </div>
+          </article>
+        </div>
+      </section>
     </div>
 
     <EmptyState
@@ -201,6 +320,26 @@ onMounted(() => book.ensureLoaded())
 
         <label class="form-label">类型</label>
         <NSelect v-model:value="form.type" :options="typeOptions" />
+        <NInput
+          v-if="form.type === BOOK_TYPE_CUSTOM"
+          v-model:value="form.customType"
+          class="custom-type-input"
+          placeholder="自定义类型，如：宝宝、宠物、留学"
+          maxlength="10"
+        />
+
+        <label v-if="editingId == null" class="form-label">归属</label>
+        <NSelect
+          v-if="editingId == null"
+          v-model:value="form.scope"
+          :options="scopeOptions"
+        />
+        <label v-else class="form-row">
+          <span>归属</span>
+          <NTag :bordered="false" :color="{ color: 'var(--lz-bg-page)' }">
+            {{ BOOK_SCOPE_META[form.scope].icon }} {{ BOOK_SCOPE_META[form.scope].label }}
+          </NTag>
+        </label>
 
         <label class="form-label">图标（emoji）</label>
         <NInput v-model:value="form.icon" placeholder="🏠" maxlength="4" />
@@ -221,6 +360,17 @@ onMounted(() => book.ensureLoaded())
         </div>
       </template>
     </NModal>
+
+    <!-- 成员管理（共享账本） -->
+    <NDrawer v-model:show="memberDrawer.visible" :width="440" placement="right">
+      <NDrawerContent :native-scrollbar="false" :show-footer="false">
+        <BookMemberDrawer
+          :book-id="memberDrawer.bookId"
+          :book-name="memberDrawer.bookName"
+          @changed="onMemberChanged"
+        />
+      </NDrawerContent>
+    </NDrawer>
 
     <!-- 删除确认 -->
     <NModal
@@ -279,6 +429,42 @@ onMounted(() => book.ensureLoaded())
 .page-sub {
   margin: 6px 0 0;
   font-size: 13px;
+  color: var(--lz-text-secondary);
+}
+
+.book-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lz-space-6);
+}
+
+.book-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lz-space-4);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lz-text-primary);
+}
+
+.custom-type-input {
+  margin-top: 8px;
+}
+
+.section-emoji {
+  font-size: 17px;
+}
+
+.section-hint {
+  font-size: 12px;
+  font-weight: 400;
   color: var(--lz-text-secondary);
 }
 
@@ -361,6 +547,11 @@ onMounted(() => book.ensureLoaded())
   &--current {
     color: var(--lz-success);
     background: var(--lz-success-bg);
+  }
+
+  &--shared {
+    color: var(--lz-primary-700);
+    background: var(--lz-primary-50);
   }
 }
 

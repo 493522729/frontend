@@ -46,6 +46,13 @@ export interface Transaction {
   createdAt: number
   /** 更新时间戳（ms） */
   updatedAt: number
+  /**
+   * 记录者 uid（= 后端 Transaction.userId，语义见 共享账本技术设计.md §3.3）。
+   * 个人账本恒为本人；共享账本下用于展示「谁记的」。
+   */
+  recordedBy?: number | null
+  /** 记录者昵称/用户名（后端回填，仅共享账本需要展示） */
+  recordedByUsername?: string | null
 }
 
 /** 交易列表查询参数 */

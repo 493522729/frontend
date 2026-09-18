@@ -10,7 +10,7 @@
 import type { SelectOption } from 'naive-ui'
 import { NSelect } from 'naive-ui'
 import { computed, h, onMounted } from 'vue'
-import { BOOK_TYPE_META } from '@/enums/book'
+import { bookTypeIcon } from '@/enums/book'
 import { useBookStore } from '@/stores/modules/book'
 
 const book = useBookStore()
@@ -28,12 +28,15 @@ function renderLabel(option: SelectOption) {
   const b = book.books.find(x => x.id === option.value)
   if (!b)
     return String(option.label ?? '')
-  const meta = BOOK_TYPE_META[b.type]
-  return h('div', { class: 'book-option' }, [
-    h('span', { class: 'book-option__icon' }, b.icon || meta.icon),
+  const children = [
+    h('span', { class: 'book-option__icon' }, b.icon || bookTypeIcon(b.type)),
     h('span', { class: 'book-option__name' }, b.name),
-    h('span', { class: 'book-option__count' }, `${b.txnCount} 笔`),
-  ])
+  ]
+  if (b.scope === 'SHARED') {
+    children.push(h('span', { class: 'book-option__shared' }, '👥'))
+  }
+  children.push(h('span', { class: 'book-option__count' }, `${b.txnCount} 笔`))
+  return h('div', { class: 'book-option' }, children)
 }
 
 function onUpdate(id: number) {
@@ -93,5 +96,11 @@ function onUpdate(id: number) {
   color: var(--lz-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.book-option__shared {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
 }
 </style>

@@ -8,7 +8,7 @@
  *   等于换一整套数据。分类（Category）**不属于账本**，全局共享：
  *   「餐饮」在日常账本和装修账本里是同一个分类，否则跨账本统计无从谈起。
  */
-import type { BookType } from '@/enums/book'
+import type { BookScope, BookType, MemberRole } from '@/enums/book'
 
 /** 账本（前端视角） */
 export interface Book {
@@ -21,6 +21,11 @@ export interface Book {
   icon: string
   /** 是否默认账本（登录后进入的那一个，全局唯一） */
   isDefault: boolean
+  /**
+   * 归属范围：PERSONAL 个人 / SHARED 共享。
+   * 与 type（用途分类）正交，新增独立字段（设计文档 §2）。后端恒返回。
+   */
+  scope?: BookScope
 }
 
 /** 账本 + 统计摘要（切换器下拉里要显示笔数，帮用户认账本） */
@@ -29,4 +34,26 @@ export interface BookWithStats extends Book {
   txnCount: number
   /** 该账本下的账户数 */
   accountCount: number
+  /** 成员数：共享账本显示「N 位成员」（个人账本恒 1，前端不展示） */
+  memberCount?: number
+}
+
+/** 共享账本成员（= 后端 BookMemberDTO，字段名对齐，改后端须同步） */
+export interface BookMember {
+  /** 用户 id（remove / changeRole / transfer 的目标标识） */
+  userId: number
+  /** 登录用户名（展示降级用） */
+  username: string
+  /** 昵称：有则显示，无则回落 username */
+  nickname: string
+  /** 头像 url，可能为空 */
+  avatar: string | null
+  /** 角色 */
+  role: MemberRole
+  /** 成员状态：ACTIVE / PENDING */
+  status: string
+  /** 加入时间戳（ms） */
+  joinedAt: number
+  /** 是否为当前登录用户（后端按 uid 标记，键名即 isMe） */
+  isMe: boolean
 }
