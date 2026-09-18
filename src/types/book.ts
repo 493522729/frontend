@@ -9,6 +9,8 @@
  *   「餐饮」在日常账本和装修账本里是同一个分类，否则跨账本统计无从谈起。
  */
 import type { BookScope, BookType, MemberRole } from '@/enums/book'
+// 再导出 MemberRole：bookMember 接口、BookMemberDrawer 都从 @/types/book 取它
+export type { MemberRole }
 
 /** 账本（前端视角） */
 export interface Book {
