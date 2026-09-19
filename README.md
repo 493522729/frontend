@@ -1,4 +1,4 @@
-# frontend · 老赵财务中台（Vue3 前端）
+# frontend · 简账财务中台（Vue3 前端）
 
 个人/家庭财务中台的前端工程。Vue3 + Vite8 + TS + Pinia + Naive UI + vxe-table + ECharts6 技术栈，从 0 到 1 全栈项目的前端部分（后端见仓库根 `backend/`）。
 
