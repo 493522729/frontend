@@ -5,7 +5,7 @@ import type { Transaction } from '@/types/transaction'
 import { NButton, useMessage, useNotification } from 'naive-ui'
 import { h, nextTick, reactive, ref, watch } from 'vue'
 import { createTag } from '@/api/modules/tag'
-import { createTransaction, deleteTransaction } from '@/api/modules/transaction'
+import { createTransaction, deleteTransaction, newClientRequestId } from '@/api/modules/transaction'
 import { budgetAlertAfterSave } from '@/composables/budgetAlert'
 import { TRANSACTION_TYPE_META, TRANSACTION_TYPES } from '@/enums/transaction'
 import { useAccountStore } from '@/stores/modules/account'
@@ -236,6 +236,22 @@ function buildInput(): Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> {
   }
 }
 
+/**
+ * 幂等重试快照（2026-09-19）。
+ *
+ * 后端 `POST /transactions` 会按 `(userId, clientRequestId)` 去重，键由这里维护，
+ * 规则就三条（**别简化成「内容哈希」**，那会让「故意记两笔一模一样的账」的第二笔被静默吞掉）：
+ *   ① 内容没变的重试 ⇒ **复用上一次的键** —— 超时的那个请求很可能其实已经落库了，
+ *      带同一个键再发，服务端会命中幂等并把原来那笔返回来（前端照常走成功路径）；
+ *   ② 内容变了（改了金额/分类/日期/备注）⇒ 换新键 —— 用户确实要记的是另一笔，
+ *      沿用旧键只会让服务端把旧内容返回来、把用户刚改的东西吞掉；
+ *   ③ 提交成功 ⇒ **清空** —— 下一次记账必须用新键。
+ *
+ * 为什么不能只靠按钮 loading：`submitting` 在 `finally` 里复位，而「请求超时」正是
+ * 「前端以为失败、服务端已经写进去了」—— 用户看到报错再点一次，就是实打实的第二笔。
+ */
+let pendingAttempt: { key: string, snapshot: string } | null = null
+
 /** 保存成功提示 + 撤销（10s 内可撤回，PRD 9.2 操作可撤销）
  *  message 无 action 能力，改用 notification 挂撤销按钮 */
 function showSavedToast(tx: Transaction) {
@@ -269,9 +285,22 @@ async function submit(closeAfter: boolean) {
     return
   }
 
+  /*
+   * 组装入参 + 定幂等键（规则见上面 pendingAttempt 的注释）：
+   * 快照在**组装之后、提交之前**取，所以「用户改了内容再点」天然是新快照 ⇒ 新键。
+   */
+  const input = buildInput()
+  const snapshot = JSON.stringify(input)
+  if (!pendingAttempt || pendingAttempt.snapshot !== snapshot)
+    pendingAttempt = { key: newClientRequestId(), snapshot }
+  // 取局部引用：下面中途会把 pendingAttempt 置空，但这一次请求用的键必须固定
+  const attemptKey = pendingAttempt.key
+
   submitting.value = true
   try {
-    const created = await createTransaction(buildInput())
+    const created = await createTransaction({ ...input, clientRequestId: attemptKey })
+    // 成功才清空：下一次记账用新键（见 pendingAttempt 注释的第 ③ 条）
+    pendingAttempt = null
 
     // 记忆本次选择，作为下次默认值
     quickEntry.remember(form.categoryId, form.accountId)

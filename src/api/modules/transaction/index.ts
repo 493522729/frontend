@@ -104,8 +104,36 @@ export function reassignAccount(fromId: number, toId: number): Promise<{ migrate
   return http.post<{ migrated: number, removed: number }>('/transactions/reassign-account', { fromId, toId })
 }
 
-/** 新增一笔（快速记账弹层会调） */
-export function createTransaction(input: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> {
+/**
+ * 生成一个客户端幂等键（`POST /transactions` 用）。
+ *
+ * ⚠️ **调用方要保证「同一次提交意图」在重试时复用同一个键**，否则等于没做幂等 ——
+ *    具体规则见 `quick-entry/index.vue` 的 `submit`（失败保留、内容变了换新、成功清空）。
+ * ⚠️ 长度远小于后端的 VARCHAR(64)；前缀 `pc-` 只是便于在日志/DB 里一眼区分端。
+ */
+export function newClientRequestId(): string {
+  return `pc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/**
+ * 新建流水的入参 = `Transaction` 去掉服务端生成的字段，再加一个可选的幂等键。
+ *
+ * ⚠️ 刻意**不**把 `clientRequestId` 加进 `Transaction` 类型：那是响应模型，
+ *    后端 `TransactionDTO` 并不返回它 —— 混在一起会让「响应里有没有这个字段」变成误会。
+ */
+export type CreateTransactionInput = Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> & {
+  /** 幂等键，见 `newClientRequestId`；不传 = 后端保持原语义（无条件新建） */
+  clientRequestId?: string
+}
+
+/**
+ * 新增一笔（快速记账弹层会调）。
+ *
+ * 传了 `clientRequestId` 时，后端会**先按 (userId, 键) 查**：命中就返回那一笔、不再新建。
+ * 治的是「请求超时（服务端其实已落库）→ 用户再点一次 → 多记一笔」——
+ * PC 端没有离线队列，这条路径全靠它兜住。
+ */
+export function createTransaction(input: CreateTransactionInput): Promise<Transaction> {
   return http.post<Transaction>('/transactions', input)
 }
 
