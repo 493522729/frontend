@@ -26,6 +26,7 @@ import {
   fetchProfile,
 } from '@/api/modules/auth'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
+import { useBookStore } from '@/stores/modules/book'
 
 export const useAuthStore = defineStore('auth', () => {
   /** 访问令牌：每次请求带在 Authorization 头里，有效期短（如 30 分钟） */
@@ -44,6 +45,9 @@ export const useAuthStore = defineStore('auth', () => {
   function setTokens(access: string, refresh: string) {
     accessToken.value = access
     refreshToken.value = refresh
+    // 换了身份就复位账号私有状态：账本列表/当前账本可能还是上个账号的，
+    // 不复位会拿旧 bookId 请求 → 403「你不是该账本的成员」（2026-09-20 仪表盘误报）
+    useBookStore().reset()
   }
 
   /** 退出登录 / 刷新失败：清空 token + 用户信息，让应用回到「未登录」状态 */
@@ -51,6 +55,7 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = ''
     refreshToken.value = ''
     userInfo.value = null
+    useBookStore().reset()
   }
 
   /**

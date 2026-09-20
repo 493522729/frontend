@@ -36,6 +36,15 @@ export const useBookStore = defineStore('book', () => {
 
   const currentBook = computed(() => books.value.find(b => b.id === currentBookId.value) ?? null)
 
+  /** 兜底：持久化/残留的账本 ID 不在列表里（后端删掉 / 换环境 / 换账号），回落到默认账本 */
+  function applyFallback(): void {
+    if (!books.value.some(b => b.id === currentBookId.value)) {
+      currentBookId.value = books.value.find(b => b.isDefault)?.id
+        ?? books.value[0]?.id
+        ?? DEFAULT_BOOK_ID
+    }
+  }
+
   /** 幂等加载账本列表 */
   async function ensureLoaded(): Promise<void> {
     if (loaded.value || loading.value)
@@ -43,12 +52,7 @@ export const useBookStore = defineStore('book', () => {
     loading.value = true
     try {
       books.value = await listBooks()
-      // 兜底：持久化的账本可能已经不存在了（后端删掉 / 换了环境），回落到默认账本
-      if (!books.value.some(b => b.id === currentBookId.value)) {
-        currentBookId.value = books.value.find(b => b.isDefault)?.id
-          ?? books.value[0]?.id
-          ?? DEFAULT_BOOK_ID
-      }
+      applyFallback()
       loaded.value = true
     }
     finally {
@@ -71,6 +75,21 @@ export const useBookStore = defineStore('book', () => {
   /** 刷新账本摘要（记账/删账后笔数变了，切换器里的数字要跟着变） */
   async function refresh(): Promise<void> {
     books.value = await listBooks()
+    // 与 ensureLoaded 同一套兜底：列表变了（含换账号后残留的旧 ID）当前账本可能已失效
+    applyFallback()
+  }
+
+  /**
+   * 账号切换 / 登出后清空。
+   * 账本列表 + 当前账本都是「账号私有」状态，而 currentBookId 还持久化在 localStorage
+   * （同一浏览器多账号共享）。换账号登录若不复位，SPA 会拿着上个账号的 bookId
+   * 去请求数据 → 后端 403「你不是该账本的成员」（2026-09-20 仪表盘误报即此因）。
+   * 由 auth store 在 setTokens / clearAuth 时调用。
+   */
+  function reset(): void {
+    books.value = []
+    loaded.value = false
+    currentBookId.value = DEFAULT_BOOK_ID
   }
 
   // ── 账本管理（CRUD，Now 清单 #2）───────────────────────
@@ -118,6 +137,7 @@ export const useBookStore = defineStore('book', () => {
     ensureLoaded,
     switchBook,
     refresh,
+    reset,
     createBookEntry,
     updateBookEntry,
     deleteBookEntry,
