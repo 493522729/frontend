@@ -9,6 +9,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import IcpFooter from '@/components/business/icp-footer/index.vue'
 import { useAppStore } from '@/stores/modules/app'
 import AccountPanel from './components/AccountPanel.vue'
 import BrandPanel from './components/BrandPanel.vue'
@@ -121,6 +122,9 @@ function onGoRegister() {
         </div>
       </section>
     </div>
+
+    <!-- ICP 备案号：未登录态也必须可见（管局核查要求） -->
+    <IcpFooter class="auth-icp" />
   </div>
 </template>
 
@@ -135,6 +139,16 @@ function onGoRegister() {
 
 :global(html.dark) .login-page {
   background: #0d1422;
+}
+
+/* 备案页脚：悬浮在分屏底部，不参与布局（避免把 100vh 撑出滚动条） */
+.auth-icp {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  padding: 8px 24px 12px;
 }
 
 .theme-toggle {

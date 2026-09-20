@@ -21,7 +21,8 @@ export const useSiteConfigStore = defineStore('siteConfig', () => {
     showFooter: true,
     icpNo: undefined,
     icpLink: undefined,
-    footerText: '本网站正在备案中',
+    // 初始不预置任何文案：加载前显示空页脚（而非过时的「备案中」），load() 后被后端值覆盖
+    footerText: undefined,
     themeMode: undefined,
     amountColorMode: undefined,
     mpTemplateBudget: undefined,
