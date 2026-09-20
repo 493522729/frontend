@@ -49,6 +49,11 @@ export default defineConfig(({ mode, command }) => {
           changeOrigin: true,
           // 后端控制器已带 /api 前缀（如 /api/auth/login），原样转发，不要剥离
         },
+        // 勋章图标等上传文件：后端经 WebConfig 以 /uploads/** 暴露，dev 下由 vite 转发到后端
+        '/uploads': {
+          target: env.VITE_PROXY_TARGET,
+          changeOrigin: true,
+        },
       },
     },
 

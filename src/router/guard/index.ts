@@ -41,6 +41,17 @@ export function setupRouterGuards(router: Router) {
       return { path: '/login', query: redirect ? { redirect } : undefined }
     }
 
+    // 角色白名单：路由声明了 roles 但当前用户不命中 → 退回首页（无权限）
+    // 菜单已按 roles 过滤，正常点不到；这里兜底防「直接改 URL / 书签」越权进入
+    const roles = to.meta.roles as string[] | undefined
+    if (roles && roles.length > 0) {
+      const userRoles = auth.userInfo?.roles ?? []
+      const allowed = roles.some(role => userRoles.includes(role))
+      if (!allowed) {
+        return { path: '/' }
+      }
+    }
+
     if (to.path === '/login' && isLoggedIn) {
       // 已登录再访问 /login → 跳过登录直接回首页（避免重复登录死循环）
       const target = (to.query.redirect as string | undefined) || '/'

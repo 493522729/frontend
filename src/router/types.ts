@@ -30,6 +30,13 @@ declare module 'vue-router' {
      * - 'blank'：  全屏空白布局，用于登录页、404、全屏大屏等
      */
     layout?: 'default' | 'blank'
+    /**
+     * 角色白名单（菜单可见 + 路由守卫放行）。
+     * - 缺省/空：所有登录用户可见。
+     * - 非空：仅当用户 roles 命中其一才显示菜单、才允许进入。
+     *   例：勋章管理仅超管 → roles: ['SUPER_ADMIN']
+     */
+    roles?: string[]
   }
 }
 

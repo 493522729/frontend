@@ -141,7 +141,8 @@ function openEdit(cat: Category) {
   form.type = cat.type
   form.name = cat.name
   form.icon = cat.icon
-  form.color = cat.color
+  // 早期/外部写入的分类可能没有 color（DB 为 null），兜底成类型默认色，避免 NColorPicker/模板取值崩掉
+  form.color = cat.color || (cat.type === 'income' ? '#22C55E' : '#5BA9FF')
   form.parentId = cat.parentId
   focusIconGroup(cat.icon)
   formVisible.value = true
@@ -333,7 +334,7 @@ watch(() => form.type, () => {
                 @drop="onDrop($event, root)"
                 @dragend="onDragEnd"
               >
-                <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
+                <span class="cat-icon" :style="{ background: `${root.color || '#94A3B8'}22`, color: root.color || '#94A3B8' }">{{ root.icon }}</span>
                 <span class="cat-name">{{ root.name }}</span>
                 <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
                 <span class="cat-actions">
@@ -353,7 +354,7 @@ watch(() => form.type, () => {
                 @dragend="onDragEnd"
               >
                 <span class="child-connector" />
-                <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
+                <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color || '#94A3B8'}22` }">
                   <TwemojiIcon :emoji="child.icon" :size="18" />
                 </span>
                 <span class="cat-name">{{ child.name }}</span>
@@ -399,7 +400,7 @@ watch(() => form.type, () => {
                 @drop="onDrop($event, root)"
                 @dragend="onDragEnd"
               >
-                <span class="cat-icon" :style="{ background: `${root.color}22`, color: root.color }">{{ root.icon }}</span>
+                <span class="cat-icon" :style="{ background: `${root.color || '#94A3B8'}22`, color: root.color || '#94A3B8' }">{{ root.icon }}</span>
                 <span class="cat-name">{{ root.name }}</span>
                 <span v-if="childrenOf(root.id).length" class="cat-badge">{{ childrenOf(root.id).length }} 个子项</span>
                 <span class="cat-actions">
@@ -419,7 +420,7 @@ watch(() => form.type, () => {
                 @dragend="onDragEnd"
               >
                 <span class="child-connector" />
-                <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color}22` }">
+                <span class="cat-icon cat-icon--sm" :style="{ background: `${child.color || '#94A3B8'}22` }">
                   <TwemojiIcon :emoji="child.icon" :size="18" />
                 </span>
                 <span class="cat-name">{{ child.name }}</span>
@@ -522,7 +523,7 @@ watch(() => form.type, () => {
         <div class="color-row">
           <NColorPicker v-model:value="form.color" :show-alpha="false" :swatches="COLOR_CANDIDATES" />
           <span class="color-preview" :style="{ background: form.color }" />
-          <span class="color-hex">{{ form.color.toUpperCase() }}</span>
+          <span class="color-hex">{{ (form.color || '').toUpperCase() }}</span>
         </div>
       </div>
 

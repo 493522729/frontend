@@ -4,11 +4,13 @@ import { useBelowLg } from '@/composables/useBelowLg'
 import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from '@/constants/app'
 import { iconPath } from '@/constants/icons'
 import { useAppStore } from '@/stores/modules/app'
+import { useAuthStore } from '@/stores/modules/auth'
 
 /**
  * 侧边栏：菜单完全由路由 meta 生成（ADR-5），此处不维护第二份菜单数据
  */
 const appStore = useAppStore()
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -22,10 +24,20 @@ const collapsed = computed(() => appStore.sidebarCollapsed || belowLg.value)
 // 不依赖 @iconify-json/mdi，避免当前 pnpm 信任策略阻塞
 
 // 过滤 hidden、按 order 排序 —— 菜单数据只有一个来源：路由表
+// 若路由声明了 roles 白名单，仅当用户命中其一才可见（如勋章管理仅超管）
 const menus = computed(() => {
+  const userRoles = auth.userInfo?.roles ?? []
   return router
     .getRoutes()
-    .filter(r => r.path !== '/' && !r.meta.hidden && r.meta.title)
+    .filter((r) => {
+      if (r.path === '/' || r.meta.hidden || !r.meta.title)
+        return false
+      const roles = r.meta.roles
+      if (roles && roles.length > 0) {
+        return roles.some(role => userRoles.includes(role))
+      }
+      return true
+    })
     .toSorted((a, b) => (a.meta.order ?? 99) - (b.meta.order ?? 99))
 })
 </script>
