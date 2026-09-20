@@ -59,6 +59,11 @@ export function revokeBadge(userId: number, badgeId: number): Promise<void> {
   return http.post<void>('/badges/revoke', { userId, badgeId })
 }
 
+/** 账号或 ID → userId（超管，后台手动授予/查询场景用） */
+export function resolveBadgeUser(user: string): Promise<number> {
+  return http.get<number>('/badges/resolve', { params: { user } })
+}
+
 /** 某用户的勋章（本人或超管） */
 export function listUserBadges(userId: number): Promise<UserBadge[]> {
   return http.get<UserBadge[]>(`/badges/users/${userId}`)

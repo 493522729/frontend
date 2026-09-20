@@ -18,6 +18,7 @@ import {
   deleteBadge,
   grantBadge,
   listUserBadges,
+  resolveBadgeUser,
   revokeBadge,
   updateBadge,
   uploadBadgeIcon,
@@ -253,21 +254,26 @@ async function loadStats() {
 const maxEarned = computed(() => stats.value.reduce((m, s) => Math.max(m, s.earnedCount), 0))
 
 // ── 3. 用户勋章 ─────────────────────────────────────────────
-const lookupUserId = ref<number | null>(null)
+const userQuery = ref('')
+const resolvedUserId = ref<number | null>(null)
 const userBadges = ref<UserBadge[]>([])
 const userBadgesLoading = ref(false)
 const grantBadgeId = ref<number | null>(null)
 const granting = ref(false)
 
 async function lookupUser() {
-  if (!lookupUserId.value)
-    return message.warning('请输入用户 ID')
+  if (!userQuery.value.trim())
+    return message.warning('请输入用户账号或 ID')
   userBadgesLoading.value = true
   try {
-    userBadges.value = await listUserBadges(lookupUserId.value)
+    // 后端解析：纯数字当用户 ID，否则按账号（用户名）查
+    resolvedUserId.value = await resolveBadgeUser(userQuery.value.trim())
+    userBadges.value = await listUserBadges(resolvedUserId.value)
   }
   catch {
-    message.error('查询失败（无权限或用户不存在）')
+    resolvedUserId.value = null
+    userBadges.value = []
+    message.error('查询失败（用户不存在或无权限）')
   }
   finally {
     userBadgesLoading.value = false
@@ -275,11 +281,11 @@ async function lookupUser() {
 }
 
 async function doGrant() {
-  if (!lookupUserId.value || grantBadgeId.value == null)
+  if (!resolvedUserId.value || grantBadgeId.value == null)
     return
   granting.value = true
   try {
-    await grantBadge(lookupUserId.value, grantBadgeId.value)
+    await grantBadge(resolvedUserId.value, grantBadgeId.value)
     message.success('已授予')
     grantBadgeId.value = null
     await lookupUser()
@@ -293,10 +299,10 @@ async function doGrant() {
 }
 
 async function doRevoke(b: UserBadge) {
-  if (!lookupUserId.value)
+  if (!resolvedUserId.value)
     return
   try {
-    await revokeBadge(lookupUserId.value, b.badgeId)
+    await revokeBadge(resolvedUserId.value, b.badgeId)
     message.success('已撤销')
     await lookupUser()
   }
@@ -463,10 +469,10 @@ onMounted(loadBadges)
 
       <NTabPane name="users" tab="用户勋章">
         <div class="lookup-bar">
-          <NInputNumber
-            v-model:value="lookupUserId"
-            :min="1"
-            placeholder="输入用户 ID"
+          <NInput
+            v-model:value="userQuery"
+            clearable
+            placeholder="输入用户账号或 ID"
             class="lookup-input"
             @keyup.enter="lookupUser"
           />
