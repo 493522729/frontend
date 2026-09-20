@@ -279,23 +279,29 @@ async function onChangePwdSubmit() {
       </p>
     </section>
 
-    <!-- 备案信息 / 小程序订阅消息：站点级管控配置，仅超级管理员可见（后端 PUT 同样只放超管） -->
-    <section v-if="isSuperAdmin" class="setting-card">
+    <!--
+      备案信息：所有登录用户可见，但仅超级管理员可编辑（后端 PUT 只放超管）。
+      isSuperAdmin=false 时禁用全部控件 + 保存按钮，仅作只读展示。
+    -->
+    <section class="setting-card">
       <div class="setting-head">
         <h2 class="setting-title">
           备案信息
         </h2>
-        <span class="setting-hint">全局页脚展示，备案通过后可替换为正式备案号</span>
+        <span class="setting-hint">
+          {{ isSuperAdmin ? '全局页脚展示，备案通过后可替换为正式备案号' : '仅超级管理员可编辑' }}
+        </span>
       </div>
       <NForm label-placement="top" :show-feedback="false">
         <NFormItem label="展示页脚">
-          <NSwitch v-model:value="icpForm.showFooter" />
+          <NSwitch v-model:value="icpForm.showFooter" :disabled="!isSuperAdmin" />
         </NFormItem>
         <NFormItem label="页脚文案">
           <NInput
             v-model:value="icpForm.footerText"
             placeholder="本网站正在备案中"
             clearable
+            :disabled="!isSuperAdmin"
           />
         </NFormItem>
         <NFormItem label="备案号">
@@ -303,6 +309,7 @@ async function onChangePwdSubmit() {
             v-model:value="icpForm.icpNo"
             placeholder="如：京ICP备12345678号-1"
             clearable
+            :disabled="!isSuperAdmin"
           />
         </NFormItem>
         <NFormItem label="备案链接">
@@ -310,10 +317,11 @@ async function onChangePwdSubmit() {
             v-model:value="icpForm.icpLink"
             placeholder="https://beian.miit.gov.cn/"
             clearable
+            :disabled="!isSuperAdmin"
           />
         </NFormItem>
         <NFormItem>
-          <NButton type="primary" :loading="icpSubmitting" @click="onSaveIcp">
+          <NButton type="primary" :loading="icpSubmitting" :disabled="!isSuperAdmin" @click="onSaveIcp">
             保存备案信息
           </NButton>
         </NFormItem>
