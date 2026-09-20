@@ -19,40 +19,46 @@ interface CategorySeed extends Omit<Category, 'id'> {
   children?: Omit<Category, 'id'>[]
 }
 
+/**
+ * 种子配色（2026-09-20 调亮 + 按图标语义搭配，与后端 DataSeeder 保持一致）：
+ *   🍜餐饮=橘 🥡外卖=浅橘 🍲聚餐=橘红 / 🚇交通=天蓝 🚕打车=出租车黄 🚌公交=浅蓝
+ *   🛍️购物=粉 🏠居家=青 🎮娱乐=紫 💊医疗=红 📚学习=靛 📱通讯=微信绿 📦其他=石灰
+ *   💼工资=钱绿 🎁奖金=金 📈理财=青蓝 💻兼职=蓝 💰其他=石灰
+ */
 const CATEGORY_SEED: CategorySeed[] = [
   {
     type: 'expense',
     name: '餐饮',
     icon: '🍜',
-    color: '#FF7A6B',
+    color: '#FF7A1A',
     parentId: null,
     children: [
-      { type: 'expense', name: '外卖', icon: '🥡', color: '#FF9A8B', parentId: null },
-      { type: 'expense', name: '聚餐', icon: '🍲', color: '#FF6B5B', parentId: null },
+      { type: 'expense', name: '外卖', icon: '🥡', color: '#FFA24D', parentId: null },
+      { type: 'expense', name: '聚餐', icon: '🍲', color: '#FF6B35', parentId: null },
     ],
   },
   {
     type: 'expense',
     name: '交通',
     icon: '🚇',
-    color: '#5BA9FF',
+    color: '#1E9BFF',
     parentId: null,
     children: [
-      { type: 'expense', name: '打车', icon: '🚕', color: '#6FB0FF', parentId: null },
-      { type: 'expense', name: '公交地铁', icon: '🚌', color: '#5BA9FF', parentId: null },
+      { type: 'expense', name: '打车', icon: '🚕', color: '#FFC53D', parentId: null },
+      { type: 'expense', name: '公交地铁', icon: '🚌', color: '#38A6FF', parentId: null },
     ],
   },
-  { type: 'expense', name: '购物', icon: '🛍️', color: '#FF9F45', parentId: null },
-  { type: 'expense', name: '居家', icon: '🏠', color: '#A78BFA', parentId: null },
-  { type: 'expense', name: '娱乐', icon: '🎮', color: '#3CC6BC', parentId: null },
-  { type: 'expense', name: '医疗', icon: '💊', color: '#F87171', parentId: null },
-  { type: 'expense', name: '学习', icon: '📚', color: '#60A5FA', parentId: null },
-  { type: 'expense', name: '通讯', icon: '📱', color: '#818CF8', parentId: null },
+  { type: 'expense', name: '购物', icon: '🛍️', color: '#EC4899', parentId: null },
+  { type: 'expense', name: '居家', icon: '🏠', color: '#14B8A6', parentId: null },
+  { type: 'expense', name: '娱乐', icon: '🎮', color: '#A855F7', parentId: null },
+  { type: 'expense', name: '医疗', icon: '💊', color: '#FF3B30', parentId: null },
+  { type: 'expense', name: '学习', icon: '📚', color: '#6366F1', parentId: null },
+  { type: 'expense', name: '通讯', icon: '📱', color: '#84CC16', parentId: null },
   { type: 'expense', name: '其他', icon: '📦', color: '#94A3B8', parentId: null },
-  { type: 'income', name: '工资', icon: '💼', color: '#22C55E', parentId: null },
-  { type: 'income', name: '奖金', icon: '🎁', color: '#10A6B0', parentId: null },
-  { type: 'income', name: '理财', icon: '📈', color: '#0EA5E9', parentId: null },
-  { type: 'income', name: '兼职', icon: '💻', color: '#84CC16', parentId: null },
+  { type: 'income', name: '工资', icon: '💼', color: '#16C784', parentId: null },
+  { type: 'income', name: '奖金', icon: '🎁', color: '#FFB020', parentId: null },
+  { type: 'income', name: '理财', icon: '📈', color: '#00B8D9', parentId: null },
+  { type: 'income', name: '兼职', icon: '💻', color: '#3E8BFF', parentId: null },
   { type: 'income', name: '其他', icon: '💰', color: '#94A3B8', parentId: null },
 ]
 

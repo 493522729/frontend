@@ -17,21 +17,29 @@ export const CENTS_PER_YUAN = 100
 /** 金额的合法格式：可选正负号 + 整数部分 + 最多两位小数 */
 const AMOUNT_PATTERN = /^[+-]?\d+(?:\.\d{1,2})?$/
 
-/** Intl.NumberFormat 构造开销不小，按 locale 缓存复用 */
-const formatterCache = new Map<string, Intl.NumberFormat>()
+/**
+ * 千分位分组器缓存（按 locale）。
+ *
+ * ⚠️ 刻意不用 `Intl.NumberFormat`：小程序 iOS 真机运行时**不提供 `Intl`**，
+ *   `new Intl.NumberFormat()` 会抛 `ReferenceError: Intl is not defined`，
+ *   且发生在页面模块加载期 ⇒ 整页 `load failed`（2026-09-20 体验版真机踩过）。
+ *   记账金额只需「三位一组、逗号分隔」，自行实现即可，不依赖运行环境。
+ *   `locale` 作为缓存键保留，仅为不改公开 API（Web 端测试会传 zh-CN / en-US）。
+ */
+const formatterCache = new Map<string, (value: number) => string>()
 
-function getIntegerFormatter(locale: string): Intl.NumberFormat {
+/** 三位一组插逗号：`1234567` → `"1,234,567"`（入参为非负整数） */
+function groupThousands(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function getIntegerFormatter(locale: string): (value: number) => string {
   const cached = formatterCache.get(locale)
   if (cached)
     return cached
 
-  const formatter = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-    useGrouping: true,
-  })
-  formatterCache.set(locale, formatter)
-  return formatter
+  formatterCache.set(locale, groupThousands)
+  return groupThousands
 }
 
 /**
@@ -142,7 +150,7 @@ export function formatCents(cents: number, options: FormatCentsOptions = {}): st
   const yuan = Math.trunc(abs / CENTS_PER_YUAN)
   const fraction = abs % CENTS_PER_YUAN
 
-  const yuanText = getIntegerFormatter(locale).format(yuan)
+  const yuanText = getIntegerFormatter(locale)(yuan)
   const fractionText = String(fraction).padStart(2, '0')
 
   return `${sign}${withSymbol ? '¥' : ''}${yuanText}.${fractionText}`
