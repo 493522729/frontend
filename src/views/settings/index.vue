@@ -36,6 +36,12 @@ const currentMoneyColorDesc = computed(
   () => moneyColorOptions.find(o => o.value === (siteConfig.config.amountColorMode ?? 'income-green'))?.desc ?? '',
 )
 
+/**
+ * 超级管理员：users.roles（CSV）里含 SUPER_ADMIN。
+ * 「备案信息」「小程序订阅消息」是站点级管控配置，普通用户/管理员不展示、后端 PUT 也只放超管。
+ */
+const isSuperAdmin = computed(() => auth.userInfo?.roles?.includes('SUPER_ADMIN') ?? false)
+
 async function onThemeChange(mode: ThemeMode) {
   // 落库为站点默认，并即时预览
   await siteConfig.update({ themeMode: mode })
@@ -273,7 +279,8 @@ async function onChangePwdSubmit() {
       </p>
     </section>
 
-    <section class="setting-card">
+    <!-- 备案信息 / 小程序订阅消息：站点级管控配置，仅超级管理员可见（后端 PUT 同样只放超管） -->
+    <section v-if="isSuperAdmin" class="setting-card">
       <div class="setting-head">
         <h2 class="setting-title">
           备案信息
@@ -313,7 +320,7 @@ async function onChangePwdSubmit() {
       </NForm>
     </section>
 
-    <section class="setting-card">
+    <section v-if="isSuperAdmin" class="setting-card">
       <div class="setting-head">
         <h2 class="setting-title">
           小程序订阅消息
@@ -357,8 +364,9 @@ async function onChangePwdSubmit() {
       <ul class="about-list">
         <li><span>产品</span><b>简账</b></li>
         <li><span>定位</span><b>个人 / 家庭财务中台（记账 + 多账本 + 报表）</b></li>
-        <li><span>技术栈</span><b>Vue 3 · TypeScript · Naive UI · ECharts 6 · Vite</b></li>
-        <li><span>数据状态</span><b>已对接真实后端，数据落库持久化</b></li>
+        <!-- 面向用户的表述：不暴露技术栈与后端实现细节 -->
+        <li><span>数据安全</span><b>数据云端同步，仅自己与账本成员可见</b></li>
+        <li><span>版本</span><b>v1.0 · 持续迭代中</b></li>
       </ul>
     </section>
 
