@@ -45,8 +45,17 @@ export const useAuthStore = defineStore('auth', () => {
   function setTokens(access: string, refresh: string) {
     accessToken.value = access
     refreshToken.value = refresh
-    // 换了身份就复位账号私有状态：账本列表/当前账本可能还是上个账号的，
-    // 不复位会拿旧 bookId 请求 → 403「你不是该账本的成员」（2026-09-20 仪表盘误报）
+    // 注意：这里不复位账号私有状态（book store 等）。
+    // token 静默刷新（request.ts 的 refreshAccessToken）也走 setTokens，
+    // 同账号刷新若复位账本 store，currentBookId 会被打回 mock 默认值 1
+    // → 请求别的账本 → 403「你不是该账本的成员」（2026-09-21 生产仪表盘误报根因）。
+    // 复位只发生在真正换身份的入口：login / register / loginByScan / clearAuth。
+  }
+
+  /** 真正切换登录身份（登录 / 注册 / 扫码登录）时调用：清掉上个账号的私有状态 */
+  function resetAccountState() {
+    // 账本列表/当前账本是账号私有状态，而 currentBookId 持久化在 localStorage
+    // （同一浏览器多账号共享），不复位会拿上个账号的 bookId 请求 → 403。
     useBookStore().reset()
   }
 
@@ -66,6 +75,7 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function login(params: LoginParams) {
     const result = await accountLogin(params)
+    resetAccountState()
     setTokens(result.accessToken, result.refreshToken)
     await refreshProfile()
     return result
@@ -78,6 +88,7 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function register(params: RegisterParams) {
     const result = await apiRegister(params)
+    resetAccountState()
     setTokens(result.accessToken, result.refreshToken)
     await refreshProfile()
     return result
@@ -85,6 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** 微信扫码登录成功的回调（由登录页在收到 CONFIRMED 状态时调用） */
   async function loginByScan(access: string, refresh: string) {
+    resetAccountState()
     setTokens(access, refresh)
     await refreshProfile()
   }
