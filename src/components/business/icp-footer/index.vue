@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import beianPoliceImg from '@/assets/beian-police.png'
 import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 
 /**
@@ -9,6 +10,9 @@ import { useSiteConfigStore } from '@/stores/modules/siteConfig'
  *   - 备案中：只展示 footerText（默认「本网站正在备案中」）
  *   - 已备案：footerText + 可点击的备案号链接
  * 只在 default layout 的登录后内页使用，因此无需处理未登录态。
+ *
+ * 公安联网备案（京公网安备11010502063140号）为审批固定值，直接写死；
+ * 链接必须指向公安备案查询页且带 code（管局核查要求），不可改为 beian.mps.gov.cn 首页。
  */
 const site = useSiteConfigStore()
 
@@ -21,6 +25,22 @@ onMounted(() => {
   <footer v-if="site.config.showFooter" class="icp-footer">
     <p class="icp-line">
       <span v-if="site.config.footerText" class="icp-text">{{ site.config.footerText }}</span>
+      <!-- 公安联网备案：官方金色徽标 + 备案号，链接为带 code 的官方查询页（合规硬要求）；
+           排在 ICP 备案号之前（管局核查页脚时公安备案常在前） -->
+      <a
+        class="icp-police"
+        href="https://beian.mps.gov.cn/#/query/webSearch?code=11010502063140"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="京公网安备11010502063140号"
+        title="京公网安备11010502063140号"
+      >
+        <img
+          :src="beianPoliceImg"
+          alt="公安联网备案徽标"
+        >
+        <span class="icp-police__no">京公网安备11010502063140号</span>
+      </a>
       <template v-if="site.config.icpNo">
         <span class="icp-divider" />
         <a
@@ -34,21 +54,6 @@ onMounted(() => {
         </a>
         <span v-else class="icp-no">{{ site.config.icpNo }}</span>
       </template>
-      <!-- 公安联网备案警徽：官方金色标识，不随主题变色（对齐腾讯云页脚样式）。
-           公安备案号下来后，在这枚图标后面追加「X公网安备 XXXX 号」+ 查询链接 -->
-      <a
-        class="icp-police"
-        href="https://beian.mps.gov.cn/"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="公安联网备案"
-        title="公安联网备案"
-      >
-        <img
-          src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE0Ij48cGF0aCBkPSJNMTIgMS41bDguNSAzLjJ2Ni4xYzAgNS4yLTMuNiA4LjktOC41IDExLjctNC45LTIuOC04LjUtNi41LTguNS0xMS43VjQuN3oiIGZpbGw9IiNjODkxMmYiLz48cGF0aCBkPSJNMTIgMy42bDYuNiAyLjV2NC43YzAgNC4yLTIuOCA3LjMtNi42IDkuNy0zLjgtMi40LTYuNi01LjUtNi42LTkuN1Y2LjF6IiBmaWxsPSIjZjBiOTNmIi8+PHBhdGggZD0iTTEyIDYuNGwxLjM1IDIuNzUgMy4wNS40NS0yLjIgMi4xNS41IDMuMDVMMTIgMTMuMzVsLTIuNyAxLjQ1LjUtMy4wNS0yLjItMi4xNSAzLjA1LS40NXoiIGZpbGw9IiM4YTVhMWIiLz48L3N2Zz4K"
-          alt=""
-        >
-      </a>
     </p>
   </footer>
 </template>
@@ -94,15 +99,23 @@ onMounted(() => {
   }
 }
 
-/* 公安备案警徽：金色官方标识，固定配色不随主题变 */
+/* 公安备案：官方金色徽标 + 备案号，整条是一个链接；徽标固定配色不随主题变 */
 .icp-police {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
+  color: var(--lz-text-tertiary);
+  text-decoration: none;
 
   img {
     display: block;
     width: 14px;
-    height: 14px;
+    height: auto;
+  }
+
+  &:hover {
+    color: var(--lz-text-secondary);
+    text-decoration: underline;
   }
 }
 </style>
