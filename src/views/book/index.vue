@@ -108,6 +108,13 @@ const resolvedType = computed(() =>
 )
 
 async function submitForm() {
+  /*
+   * 连点防护：函数入口拦一道（同账户页）。
+   * 按钮 `:loading` 只挡鼠标点击，回车路径绕得过去；账本也没有幂等键，
+   * 重复提交会建出两个同名账本。
+   */
+  if (submitting.value)
+    return
   const name = form.name.trim()
   if (!name)
     return message.warning('请输入账本名称')
@@ -141,6 +148,9 @@ function openDelete(b: BookWithStats) {
 }
 
 async function confirmDelete() {
+  // 连点防护（同账户页）
+  if (deleting.value)
+    return
   if (!target.value)
     return
   deleting.value = true

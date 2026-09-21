@@ -112,6 +112,11 @@ export interface AccountBalance {
   transferOut: number
   /** 参与的流水笔数（转账在两端各计一次 —— 两个账户都"参与"了这笔） */
   txnCount: number
+  /**
+   * 该账户是否属于当前登录用户（后端 `AccountBalanceDTO.mine`）。
+   * 共享账本里 false = 成员账户，不计入「我的净资产」；旧后端缺省视为自己的。
+   */
+  mine: boolean
 }
 
 /**

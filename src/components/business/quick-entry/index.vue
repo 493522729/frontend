@@ -101,7 +101,10 @@ const categoryOptions = computed(() =>
 )
 
 const accountOptions = computed(() =>
-  dict.accounts.map(a => emojiOption(a.icon, a.name, a.id)),
+  dict.accounts.map(a =>
+    // 成员账户（共享账本里别人的账户）标出来：转进去的钱不在自己名下
+    emojiOption(a.icon, a.mine === false ? `${a.name}（成员）` : a.name, a.id),
+  ),
 )
 
 /** 金额实时预览：输入合法且非 0 时显示「= ¥1,234.56」 */

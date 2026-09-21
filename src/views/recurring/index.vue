@@ -31,7 +31,7 @@ import { emojiOption, renderEmojiLabel } from '@/utils/select-option'
 const recurring = useRecurringStore()
 const book = useBookStore()
 const dict = useDictStore()
-const { templates, pending, loading } = storeToRefs(recurring)
+const { templates, pending } = storeToRefs(recurring)
 const { categories, accounts, categoryMap, accountMap } = storeToRefs(dict)
 
 const message = useMessage()
@@ -42,11 +42,15 @@ const dialog = useDialog()
 // ── 模板表单（新增 / 编辑共用） ──────────────────────
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
+/** 模板保存中（连点防护：建模板没有幂等键，双击会建出两个一样的模板） */
+const formSubmitting = ref(false)
 const form = reactive({
   type: 'expense' as RecurringType,
   amountYuan: '',
   categoryId: null as number | null,
   accountId: null as number | null,
+  /** 转入账户：仅「转账」用（非转账恒为 null，提交时也不下发） */
+  toAccountId: null as number | null,
   note: '',
   startDate: '',
   autoConfirm: false,
@@ -55,6 +59,9 @@ const form = reactive({
 /** 起始日时间戳（NDatePicker 绑定 number），提交时转成 YYYY-MM-DD 字符串 */
 const startDateTs = ref<number | null>(null)
 
+/** 转账：不看分类（categoryOptions 会因 form.type='transfer' 过滤成空，正好），改看转出/转入两端 */
+const isTransfer = computed(() => form.type === 'transfer')
+
 const categoryOptions = computed(() =>
   categories.value.filter(c => c.type === form.type).map(c => emojiOption(c.icon, c.name, c.id)),
 )
@@ -62,11 +69,39 @@ const accountOptions = computed(() =>
   accounts.value.map(a => emojiOption(a.icon, a.name, a.id)),
 )
 
+// ── 展示辅助：转账没有「正负号 / 分类」语义，模板行、待确认行、确认弹窗三处共用 ──
+function typeLabel(type: RecurringType) {
+  return type === 'income' ? '收入' : type === 'transfer' ? '转账' : '支出'
+}
+/** 标签色：转账用 info —— 它既不是收入也不是支出，别用红绿误导 */
+function typeTagType(type: RecurringType) {
+  return type === 'income' ? 'success' : type === 'transfer' ? 'info' : 'error'
+}
+/** 金额文案：转账不带正负号（钱只是在自己账户之间搬家） */
+function amountText(type: RecurringType, amount: number) {
+  if (type === 'transfer')
+    return formatCents(amount)
+  return `${type === 'income' ? '+' : '-'}${formatCents(amount)}`
+}
+/** 账户文案：转账显示「转出 → 转入」（只写转出会让人以为钱凭空少了） */
+function accountText(type: RecurringType, accountId: number, toAccountId: number | null) {
+  const from = accountMap.value.get(accountId)?.name ?? '-'
+  if (type !== 'transfer')
+    return from
+  return `${from} → ${toAccountId == null ? '-' : (accountMap.value.get(toAccountId)?.name ?? '-')}`
+}
+/** 元信息：收支是「分类 · 账户」，转账没有分类 ⇒ 只写「转出 → 转入」 */
+function metaText(type: RecurringType, categoryId: number, accountId: number, toAccountId: number | null) {
+  const acct = accountText(type, accountId, toAccountId)
+  return type === 'transfer' ? acct : `${categoryMap.value.get(categoryId)?.name ?? '-'} · ${acct}`
+}
+
 function resetForm() {
   form.type = 'expense'
   form.amountYuan = ''
   form.categoryId = null
   form.accountId = null
+  form.toAccountId = null
   form.note = ''
   form.startDate = ''
   form.autoConfirm = false
@@ -80,12 +115,13 @@ function openCreate() {
   showForm.value = true
 }
 
-function openEdit(t: { id: number, type: RecurringType, amount: number, categoryId: number, accountId: number, note: string, startDate: string, autoConfirm: boolean, active: boolean }) {
+function openEdit(t: { id: number, type: RecurringType, amount: number, categoryId: number, accountId: number, toAccountId: number | null, note: string, startDate: string, autoConfirm: boolean, active: boolean }) {
   editingId.value = t.id
   form.type = t.type
   form.amountYuan = (t.amount / 100).toString()
   form.categoryId = t.categoryId
   form.accountId = t.accountId
+  form.toAccountId = t.toAccountId
   form.note = t.note
   form.startDate = t.startDate
   form.autoConfirm = t.autoConfirm
@@ -96,17 +132,31 @@ function openEdit(t: { id: number, type: RecurringType, amount: number, category
 }
 
 async function submitForm() {
+  // 连点防护：函数入口拦一道（按钮 :loading 只挡鼠标点击，建模板又没有幂等键）
+  if (formSubmitting.value)
+    return
   const amount = Math.round(Number(form.amountYuan) * 100)
   if (!form.amountYuan || !Number.isFinite(amount) || amount <= 0) {
     message.warning('请填写有效金额')
     return
   }
-  if (form.categoryId == null) {
-    message.warning('请选择分类')
+  if (form.accountId == null) {
+    message.warning(isTransfer.value ? '请选择转出账户' : '请选择账户')
     return
   }
-  if (form.accountId == null) {
-    message.warning('请选择账户')
+  if (isTransfer.value) {
+    // 转账两端：缺一端记不成，撞成同一个账户等于「自转自」（后端也有同款校验）
+    if (form.toAccountId == null) {
+      message.warning('请选择转入账户')
+      return
+    }
+    if (form.toAccountId === form.accountId) {
+      message.warning('转出和转入不能是同一个账户')
+      return
+    }
+  }
+  else if (form.categoryId == null) {
+    message.warning('请选择分类')
     return
   }
   if (startDateTs.value == null) {
@@ -119,13 +169,16 @@ async function submitForm() {
     bookId: book.currentBookId,
     type: form.type,
     amount,
-    categoryId: form.categoryId,
+    // 转账不看分类：与手工转账同口径存 0（后端也不会读它）
+    categoryId: isTransfer.value ? 0 : (form.categoryId ?? 0),
     accountId: form.accountId,
+    toAccountId: isTransfer.value ? form.toAccountId : null,
     note: form.note.trim(),
     startDate: form.startDate,
     autoConfirm: form.autoConfirm,
     active: form.active,
   }
+  formSubmitting.value = true
   try {
     if (editingId.value != null) {
       await recurring.updateTemplateEntry(editingId.value, payload)
@@ -139,6 +192,9 @@ async function submitForm() {
   }
   catch (e) {
     message.error((e as Error).message || '保存失败')
+  }
+  finally {
+    formSubmitting.value = false
   }
 }
 
@@ -164,19 +220,48 @@ function askDelete(id: number) {
 
 // ── 待确认项：确认 / 改 / 删 ──────────────────────────
 const showConfirm = ref(false)
-const confirmTarget = ref<{ templateId: number, amount: number, categoryId: number, accountId: number, note: string, dueDate: string } | null>(null)
-const confirmForm = reactive({ amountYuan: '', categoryId: null as number | null, accountId: null as number | null, note: '' })
+/** 确认入账中（连点防护：每点一次就真写一笔流水） */
+const confirmSubmitting = ref(false)
+/** 待确认项的形状（带 type / toAccountId —— 转账确认时两端都要能改） */
+interface ConfirmTarget {
+  templateId: number
+  type: RecurringType
+  amount: number
+  categoryId: number
+  accountId: number
+  toAccountId: number | null
+  note: string
+  dueDate: string
+}
+const confirmTarget = ref<ConfirmTarget | null>(null)
+const confirmForm = reactive({ amountYuan: '', categoryId: null as number | null, accountId: null as number | null, toAccountId: null as number | null, note: '' })
+/** 确认弹窗里这一笔是不是转账（决定「分类 / 转入账户」哪一项可见、校验哪一条） */
+const confirmIsTransfer = computed(() => confirmTarget.value?.type === 'transfer')
+/*
+ * 确认弹窗的分类候选要按**这一笔的类型**过滤，不能复用表单那个 categoryOptions
+ * —— 后者跟着 form.type 走，改过模板类型后再确认另一笔会列出不匹配的分类。
+ */
+const confirmCategoryOptions = computed(() => {
+  const t = confirmTarget.value
+  if (t == null)
+    return []
+  return categories.value.filter(c => c.type === t.type).map(c => emojiOption(c.icon, c.name, c.id))
+})
 
-function openConfirm(p: { templateId: number, amount: number, categoryId: number, accountId: number, note: string, dueDate: string }) {
+function openConfirm(p: ConfirmTarget) {
   confirmTarget.value = p
   confirmForm.amountYuan = (p.amount / 100).toString()
   confirmForm.categoryId = p.categoryId
   confirmForm.accountId = p.accountId
+  confirmForm.toAccountId = p.toAccountId
   confirmForm.note = p.note
   showConfirm.value = true
 }
 
 async function submitConfirm() {
+  // 连点防护：确认会真的写一笔流水进去
+  if (confirmSubmitting.value)
+    return
   if (!confirmTarget.value)
     return
   const amount = Math.round(Number(confirmForm.amountYuan) * 100)
@@ -184,17 +269,35 @@ async function submitConfirm() {
     message.warning('请填写有效金额')
     return
   }
-  if (confirmForm.categoryId == null || confirmForm.accountId == null) {
-    message.warning('请选择分类与账户')
+  if (confirmForm.accountId == null) {
+    message.warning(confirmIsTransfer.value ? '请选择转出账户' : '请选择账户')
     return
   }
+  if (confirmIsTransfer.value) {
+    if (confirmForm.toAccountId == null) {
+      message.warning('请选择转入账户')
+      return
+    }
+    if (confirmForm.toAccountId === confirmForm.accountId) {
+      message.warning('转出和转入不能是同一个账户')
+      return
+    }
+  }
+  else if (confirmForm.categoryId == null) {
+    message.warning('请选择分类')
+    return
+  }
+  confirmSubmitting.value = true
   try {
     await recurring.confirmPendingEntry({
       bookId: book.currentBookId,
       templateId: confirmTarget.value.templateId,
       amount,
-      categoryId: confirmForm.categoryId,
+      // 转账不看分类（存 0，与手工转账一致）
+      categoryId: confirmIsTransfer.value ? 0 : (confirmForm.categoryId ?? 0),
       accountId: confirmForm.accountId,
+      // 只有转账才下发转入账户；非转账留 undefined = 不覆盖（后端本来也不会带）
+      toAccountId: confirmIsTransfer.value ? (confirmForm.toAccountId ?? undefined) : undefined,
       note: confirmForm.note.trim(),
     })
     message.success('已确认入账')
@@ -202,6 +305,9 @@ async function submitConfirm() {
   }
   catch (e) {
     message.error((e as Error).message || '确认失败')
+  }
+  finally {
+    confirmSubmitting.value = false
   }
 }
 
@@ -228,14 +334,14 @@ onMounted(async () => {
                 <NText strong>
                   {{ p.note }}
                 </NText>
-                <NTag size="small" :type="p.type === 'income' ? 'success' : 'error'" :bordered="false">
-                  {{ p.type === 'income' ? '收入' : '支出' }}
+                <NTag size="small" :type="typeTagType(p.type)" :bordered="false">
+                  {{ typeLabel(p.type) }}
                 </NTag>
-                <NText :type="p.type === 'income' ? 'success' : 'error'">
-                  {{ p.type === 'income' ? '+' : '-' }}{{ formatCents(p.amount) }}
+                <NText :type="typeTagType(p.type)">
+                  {{ amountText(p.type, p.amount) }}
                 </NText>
                 <NText depth="3" class="pending-meta">
-                  {{ categoryMap.get(p.categoryId)?.name }} · {{ accountMap.get(p.accountId)?.name }} · 计划 {{ p.dueDate }}
+                  {{ metaText(p.type, p.categoryId, p.accountId, p.toAccountId) }} · 计划 {{ p.dueDate }}
                 </NText>
               </div>
               <NSpace :size="8">
@@ -275,14 +381,14 @@ onMounted(async () => {
                 <NText strong>
                   {{ t.note }}
                 </NText>
-                <NTag size="small" :type="t.type === 'income' ? 'success' : 'error'" :bordered="false">
-                  {{ t.type === 'income' ? '收入' : '支出' }}
+                <NTag size="small" :type="typeTagType(t.type)" :bordered="false">
+                  {{ typeLabel(t.type) }}
                 </NTag>
-                <NText :type="t.type === 'income' ? 'success' : 'error'">
-                  {{ t.type === 'income' ? '+' : '-' }}{{ formatCents(t.amount) }}
+                <NText :type="typeTagType(t.type)">
+                  {{ amountText(t.type, t.amount) }}
                 </NText>
                 <NText depth="3" class="tpl-meta">
-                  {{ categoryMap.get(t.categoryId)?.name }} · {{ accountMap.get(t.accountId)?.name }} · 自 {{ t.startDate }}
+                  {{ metaText(t.type, t.categoryId, t.accountId, t.toAccountId) }} · 自 {{ t.startDate }}
                 </NText>
               </div>
               <NSpace :size="10" align="center">
@@ -331,6 +437,10 @@ onMounted(async () => {
               <NRadioButton value="income">
                 收入
               </NRadioButton>
+              <!-- 转账：每月固定给某个账户转钱（如「1 号给家人转 5000」），不计收支、不进预算 -->
+              <NRadioButton value="transfer">
+                转账
+              </NRadioButton>
             </NRadioGroup>
           </NFormItemGi>
           <NFormItemGi label="金额（元）">
@@ -339,14 +449,18 @@ onMounted(async () => {
           <NFormItemGi label="起始日">
             <NDatePicker v-model:value="startDateTs" type="date" clearable style="width: 100%" />
           </NFormItemGi>
-          <NFormItemGi label="分类">
+          <!-- 转账不看分类（与手工转账同口径），直接不渲染这一项 -->
+          <NFormItemGi v-if="!isTransfer" label="分类">
             <NSelect v-model:value="form.categoryId" :options="categoryOptions" :render-label="renderEmojiLabel" placeholder="选择分类" />
           </NFormItemGi>
-          <NFormItemGi label="账户">
-            <NSelect v-model:value="form.accountId" :options="accountOptions" :render-label="renderEmojiLabel" placeholder="选择账户" />
+          <NFormItemGi :label="isTransfer ? '转出账户' : '账户'">
+            <NSelect v-model:value="form.accountId" :options="accountOptions" :render-label="renderEmojiLabel" :placeholder="isTransfer ? '选择转出账户' : '选择账户'" />
+          </NFormItemGi>
+          <NFormItemGi v-if="isTransfer" label="转入账户">
+            <NSelect v-model:value="form.toAccountId" :options="accountOptions" :render-label="renderEmojiLabel" placeholder="选择转入账户" />
           </NFormItemGi>
           <NFormItemGi :span="2" label="备注">
-            <NInput v-model:value="form.note" placeholder="如 房租 / 工资" />
+            <NInput v-model:value="form.note" :placeholder="isTransfer ? '如 给家人转账' : '如 房租 / 工资'" />
           </NFormItemGi>
           <NFormItemGi label="自动确认">
             <NSwitch v-model:value="form.autoConfirm" />
@@ -361,7 +475,7 @@ onMounted(async () => {
           <NButton @click="showForm = false">
             取消
           </NButton>
-          <NButton type="primary" :loading="loading" @click="submitForm">
+          <NButton type="primary" :loading="formSubmitting" @click="submitForm">
             保存
           </NButton>
         </NSpace>
@@ -378,11 +492,14 @@ onMounted(async () => {
           <NFormItemGi label="计划日">
             <NText>{{ confirmTarget.dueDate }}</NText>
           </NFormItemGi>
-          <NFormItemGi label="分类">
-            <NSelect v-model:value="confirmForm.categoryId" :options="categoryOptions" :render-label="renderEmojiLabel" />
+          <NFormItemGi v-if="!confirmIsTransfer" label="分类">
+            <NSelect v-model:value="confirmForm.categoryId" :options="confirmCategoryOptions" :render-label="renderEmojiLabel" />
           </NFormItemGi>
-          <NFormItemGi label="账户">
+          <NFormItemGi :label="confirmIsTransfer ? '转出账户' : '账户'">
             <NSelect v-model:value="confirmForm.accountId" :options="accountOptions" :render-label="renderEmojiLabel" />
+          </NFormItemGi>
+          <NFormItemGi v-if="confirmIsTransfer" label="转入账户">
+            <NSelect v-model:value="confirmForm.toAccountId" :options="accountOptions" :render-label="renderEmojiLabel" />
           </NFormItemGi>
           <NFormItemGi :span="2" label="备注">
             <NInput v-model:value="confirmForm.note" />
@@ -394,7 +511,7 @@ onMounted(async () => {
           <NButton @click="showConfirm = false">
             取消
           </NButton>
-          <NButton type="primary" @click="submitConfirm">
+          <NButton type="primary" :loading="confirmSubmitting" @click="submitConfirm">
             确认入账
           </NButton>
         </NSpace>

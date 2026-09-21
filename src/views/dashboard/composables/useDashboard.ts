@@ -43,9 +43,9 @@ export function useDashboard() {
         throw overviewResult.reason
       overview.value = overviewResult.value
       totalNetAssets.value = totalResult.status === 'fulfilled' ? totalResult.value : null
-      // 当前账本净值：该账本账户余额之和（真实后端现算，替代原 mock overview.netAssets）
+      // 当前账本「我的净资产」：只合计自己的账户（mine !== false）—— 成员账户是别人的钱，不计入
       currentBookNetAssets.value = currentResult.status === 'fulfilled'
-        ? currentResult.value.reduce((s, x) => s + x.balance, 0)
+        ? currentResult.value.filter(x => x.mine !== false).reduce((s, x) => s + x.balance, 0)
         : null
     }
     catch (e) {

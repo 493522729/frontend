@@ -1,3 +1,4 @@
+import type { AccountCreateInput } from '@/api/modules/account'
 import type { AccountType } from '@/enums/account'
 import type { Account, AccountWithBalance } from '@/types/transaction'
 import { acceptHMRUpdate, defineStore } from 'pinia'
@@ -82,17 +83,27 @@ export const useAccountStore = defineStore('account', () => {
 
   // ── 派生视图 ────────────────────────────────────────────
 
-  /** 净资产 = 所有账户余额之和（信用卡余额为负，自然被扣掉，无需额外判断类型） */
-  const netAssets = computed(() => accounts.value.reduce((sum, a) => sum + a.balance, 0))
+  /*
+   * 归属拆分（共享账本）：成员账户**可见**（能看到家人花了多少），但不属于「我的资产」——
+   * 转账给对方账户后，那笔钱不该再算进我的净资产。
+   * ⚠️ 判定统一写 `mine !== false`：旧后端不返回该字段 ⇒ 保持「都算我的」旧行为，
+   *    而不是把所有账户误判成成员账户（那会让净资产直接变 0）。
+   */
+  const myAccounts = computed(() => accounts.value.filter(a => a.mine !== false))
+  /** 成员账户（他人的账户；只在共享账本里非空） */
+  const memberAccounts = computed(() => accounts.value.filter(a => a.mine === false))
 
-  /** 总资产（仅正余额账户，信用卡欠款不计入） */
+  /** 我的净资产 = **只合计自己的账户**（信用卡余额为负，自然被扣掉，无需额外判断类型） */
+  const netAssets = computed(() => myAccounts.value.reduce((sum, a) => sum + a.balance, 0))
+
+  /** 我的总资产（仅正余额账户，信用卡欠款不计入） */
   const totalAssets = computed(() =>
-    accounts.value.filter(a => a.balance > 0).reduce((sum, a) => sum + a.balance, 0),
+    myAccounts.value.filter(a => a.balance > 0).reduce((sum, a) => sum + a.balance, 0),
   )
 
-  /** 总负债（信用卡欠了多少，返回正数便于展示） */
+  /** 我的总负债（信用卡欠了多少，返回正数便于展示） */
   const totalDebt = computed(() =>
-    accounts.value.filter(a => a.balance < 0).reduce((sum, a) => sum - a.balance, 0),
+    myAccounts.value.filter(a => a.balance < 0).reduce((sum, a) => sum - a.balance, 0),
   )
 
   /** 按账户类型分组（页面按「现金 / 银行卡 / 信用 / 第三方」分区展示） */
@@ -132,12 +143,12 @@ export const useAccountStore = defineStore('account', () => {
     quickEntry.notifyDataChanged()
   }
 
-  async function createAccountEntry(input: Omit<Account, 'id'>): Promise<void> {
+  async function createAccountEntry(input: AccountCreateInput): Promise<void> {
     await createAccount(input)
     await afterWrite()
   }
 
-  async function updateAccountEntry(id: number, patch: Partial<Omit<Account, 'id'>>): Promise<void> {
+  async function updateAccountEntry(id: number, patch: Partial<Omit<Account, 'id' | 'mine'>>): Promise<void> {
     await updateAccount(id, patch)
     await afterWrite()
   }
@@ -163,6 +174,8 @@ export const useAccountStore = defineStore('account', () => {
 
   return {
     accounts,
+    myAccounts,
+    memberAccounts,
     loading,
     loadedBookId,
     netAssets,

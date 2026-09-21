@@ -83,6 +83,9 @@ function openInvite() {
   inviteVisible.value = true
 }
 async function confirmInvite() {
+  // 连点防护：入口拦一道（按钮 :loading 只挡鼠标点击）
+  if (inviteLoading.value)
+    return
   const username = inviteUsername.value.trim()
   if (!username) {
     inviteError.value = '请输入对方的用户名'
@@ -162,6 +165,9 @@ function onLeave() {
   danger.visible = true
 }
 async function confirmDanger() {
+  // 连点防护：移除成员 / 转让账本 / 退出账本都是不可逆操作，重复执行代价高
+  if (danger.loading)
+    return
   if (!pending)
     return
   danger.loading = true

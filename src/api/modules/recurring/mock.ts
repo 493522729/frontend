@@ -54,8 +54,8 @@ function ensureSeed(): void {
     return
   const firstOfMonth = `${currentYM()}-01`
   _templates.push(
-    { id: _nextId++, bookId: 1, type: 'expense', amount: 300000, categoryId: rentCat.id, accountId: debit.id, note: '房租', startDate: firstOfMonth, autoConfirm: false, active: true },
-    { id: _nextId++, bookId: 1, type: 'income', amount: 2500000, categoryId: salaryCat.id, accountId: debit.id, note: '工资', startDate: firstOfMonth, autoConfirm: false, active: true },
+    { id: _nextId++, bookId: 1, type: 'expense', amount: 300000, categoryId: rentCat.id, accountId: debit.id, toAccountId: null, note: '房租', startDate: firstOfMonth, autoConfirm: false, active: true },
+    { id: _nextId++, bookId: 1, type: 'income', amount: 2500000, categoryId: salaryCat.id, accountId: debit.id, toAccountId: null, note: '工资', startDate: firstOfMonth, autoConfirm: false, active: true },
   )
 }
 
@@ -123,6 +123,7 @@ export function mockGetPendingRecurring(bookId: number): PendingRecurring[] {
       amount: t.amount,
       categoryId: t.categoryId,
       accountId: t.accountId,
+      toAccountId: t.toAccountId,
       note: t.note,
       dueDate: dueDateOf(t),
       willAutoConfirm: t.autoConfirm,
@@ -148,7 +149,8 @@ export function mockConfirmRecurring(options: ConfirmRecurringOptions) {
     amount: options.amount ?? t.amount,
     currency: 'CNY',
     accountId: options.accountId ?? t.accountId,
-    toAccountId: null,
+    // 转账：转入端「覆盖 ?: 模板值」；非转账恒为 null（与后端 confirm 同口径）
+    toAccountId: t.type === 'transfer' ? (options.toAccountId ?? t.toAccountId) : null,
     categoryId: options.categoryId ?? t.categoryId,
     transDate: options.transDate ?? dueDateOf(t),
     note: options.note ?? t.note,

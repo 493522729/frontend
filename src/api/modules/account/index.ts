@@ -14,13 +14,30 @@ export function listAccounts(bookId?: number): Promise<Account[]> {
   return http.get<Account[]>('/accounts', bookId != null ? { bookId } : undefined)
 }
 
+/*
+ * ⚠️ 写入口刻意排除 `mine`：账户归属由**后端**按登录用户决定（AccountController.create 里 setUserId(uid)），
+ *    前端传了也不认 —— 放进入参类型只会误导调用方去填一个无效字段。
+ */
+
+/**
+ * 新增账户入参。
+ *
+ * `ownerUserId`（可选）= 归属人：省略即建给自己；指定为**本账本其他成员**时，
+ * 后端会校验「调用者是 OWNER/ADMIN」且「该用户是本账本成员」（见 AccountController.create）。
+ * 典型场景：共享账本里帮家人把他/她的卡录进来，避免算进自己的净资产。
+ */
+export type AccountCreateInput = Omit<Account, 'id' | 'mine'> & {
+  /** 归属人 userId；不传 = 建给自己 */
+  ownerUserId?: number
+}
+
 /** 新增账户 */
-export function createAccount(input: Omit<Account, 'id'>): Promise<Account> {
+export function createAccount(input: AccountCreateInput): Promise<Account> {
   return http.post<Account>('/accounts', input)
 }
 
 /** 更新账户 */
-export function updateAccount(id: number, patch: Partial<Omit<Account, 'id'>>): Promise<Account> {
+export function updateAccount(id: number, patch: Partial<Omit<Account, 'id' | 'mine'>>): Promise<Account> {
   return http.put<Account>(`/accounts/${id}`, patch)
 }
 

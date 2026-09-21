@@ -93,6 +93,12 @@ export interface Account {
   initBalance: number
   /** 信用额度（分），仅 credit 类型 */
   creditLimit: number
+  /**
+   * 是否属于**当前登录用户**（后端 `AccountDTO.mine`）。
+   * 共享账本里成员能看到彼此的账户，但「我的净资产」只算 `mine !== false` 的那些；
+   * ⚠️ 旧后端不返回该字段 ⇒ 一律按 `mine !== false` 判定，缺省视为「自己的」。
+   */
+  mine: boolean
 }
 
 /**

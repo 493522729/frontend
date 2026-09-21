@@ -1,15 +1,18 @@
 <script setup lang="ts">
+import type { AccountCreateInput } from '@/api/modules/account'
 import type { AccountType } from '@/enums/account'
-import type { Account, AccountWithBalance } from '@/types/transaction'
+import type { BookMember, MemberRole } from '@/types/book'
+import type { AccountWithBalance } from '@/types/transaction'
 import { NButton, NInput, NModal, NSelect, NSkeleton, NSwitch, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { findFallbackAccount } from '@/api/modules/account'
+import { fetchBookMembers } from '@/api/modules/bookMember'
 import { countAccountUsage } from '@/api/modules/transaction'
 import AnimatedMoney from '@/components/base/animated-money/index.vue'
 import EmptyState from '@/components/business/empty-state/index.vue'
 import FlowRail from '@/components/business/flow-rail/index.vue'
 import TwemojiIcon from '@/components/business/twemoji-icon/index.vue'
-import { ACCOUNT_TYPE_META, ACCOUNT_TYPES } from '@/enums/account'
+import { ACCOUNT_TYPE_META, ACCOUNT_TYPES, accountTypeIcon, accountTypeLabel } from '@/enums/account'
 import { useAccountStore } from '@/stores/modules/account'
 import { useBookStore } from '@/stores/modules/book'
 import { useQuickEntryStore } from '@/stores/modules/quickEntry'
@@ -38,10 +41,6 @@ const message = useMessage()
 const accounts = computed<AccountWithBalance[]>(() => accountStore.accounts)
 const loading = computed(() => accountStore.loading)
 
-const typeOptions = ACCOUNT_TYPES.map(t =>
-  emojiOption(ACCOUNT_TYPE_META[t].icon, ACCOUNT_TYPE_META[t].label, t),
-)
-
 /** 信用卡的可用额度 = 额度 + 余额（余额为负表示已欠款） */
 function availableText(a: AccountWithBalance): string {
   return formatCents(a.creditLimit + a.balance, { withSymbol: true })
@@ -68,22 +67,52 @@ interface AccountGroup {
   total: number
 }
 
-const groups = computed<AccountGroup[]>(() =>
-  ACCOUNT_TYPES
+/**
+ * 按账户类型分组（「我的账户 / 成员账户」两个分区各自再按类型分）。
+ *
+ * ⚠️ 类型可自定义 ⇒ 只遍历预设数组会**漏掉**自定义类型的账户（它们会在账户页彻底不渲染）。
+ *    这里把「预设之外的类型」按出现顺序补在后面，并统一走 `accountTypeLabel/Icon`（带兜底）。
+ */
+function buildTypeGroups(list: AccountWithBalance[]): AccountGroup[] {
+  const presetTypes: readonly string[] = ACCOUNT_TYPES
+  const customTypes = [...new Set(list.map(a => a.type).filter(t => !presetTypes.includes(t)))]
+
+  return [...presetTypes, ...customTypes]
     .map((type) => {
-      const items = accounts.value
+      const items = list
         .filter(a => a.type === type)
         .slice()
         .sort((x, y) => Math.abs(y.balance) - Math.abs(x.balance))
       return {
         type,
-        label: ACCOUNT_TYPE_META[type].label,
-        icon: ACCOUNT_TYPE_META[type].icon,
+        label: accountTypeLabel(type),
+        icon: accountTypeIcon(type),
         items,
         total: items.reduce((sum, a) => sum + a.balance, 0),
       }
     })
-    .filter(g => g.items.length > 0),
+    .filter(g => g.items.length > 0)
+}
+
+/**
+ * 归属分区（共享账本）：我的账户 / 成员账户。
+ *
+ * 「我的净资产」与资产负债结构只统计「我的账户」；成员账户（他人账户）可见但明确标注不计入 ——
+ * 转账给对方账户后，那笔钱不该再算成自己的资产。
+ * 两层结构 = 分区（归属）→ 组（类型），所以页面上不会出现两个「现金」标题。
+ */
+interface AccountSection {
+  key: 'mine' | 'member'
+  title: string
+  hint: string
+  groups: AccountGroup[]
+}
+
+const sections = computed<AccountSection[]>(() =>
+  [
+    { key: 'mine' as const, title: '我的账户', hint: '', groups: buildTypeGroups(accountStore.myAccounts) },
+    { key: 'member' as const, title: '成员账户', hint: '不计入我的净资产', groups: buildTypeGroups(accountStore.memberAccounts) },
+  ].filter(s => s.groups.length > 0),
 )
 
 /**
@@ -94,6 +123,9 @@ const groups = computed<AccountGroup[]>(() =>
  * 份额不足 0.1% 也省掉，否则会出现一排「占净资产 0.0%」。
  */
 function shareText(a: AccountWithBalance): string | null {
+  // 成员账户不属于「我的净资产」，占比对它没有意义
+  if (a.mine === false)
+    return null
   if (a.balance <= 0 || accountStore.netAssets <= 0)
     return null
   const pct = Math.round((a.balance / accountStore.netAssets) * 1000) / 10
@@ -132,7 +164,70 @@ const form = reactive({
   initBalanceYuan: '0',
   creditLimitYuan: '0',
   isCredit: false,
+  /** 账户归属人 userId（null = 建给自己）；仅共享账本 + OWNER/ADMIN 时可选他人 */
+  ownerUserId: null as number | null,
 })
+
+/**
+ * 类型下拉选项：预设 6 项 + 当前值（自定义类型）。
+ *
+ * ⚠️ 必须把**当前值**补进 options：编辑一个自定义类型的账户（如「花呗」）时，
+ *    值不在选项里会让 NSelect 显示成空白。表单上配 `filterable` + `tag` 允许直接输入新类型名。
+ * ⚠️ 定义在 form 之后：这里读 form.type，写在前面会触发 `ts/no-use-before-define`。
+ */
+const typeOptions = computed(() => {
+  // value 显式放宽成 string：预设项要和「自定义类型」放进同一个数组，否则 push 时泛型不兼容
+  const base = ACCOUNT_TYPES.map(t =>
+    emojiOption(ACCOUNT_TYPE_META[t].icon, ACCOUNT_TYPE_META[t].label, t as string),
+  )
+  const current = form.type
+  if (current && !(ACCOUNT_TYPES as readonly string[]).includes(current))
+    base.push(emojiOption(accountTypeIcon(current), current, current))
+  return base
+})
+
+/*
+ * 「归属」——共享账本里 OWNER/ADMIN 可以**替其他成员**建账户。
+ *
+ * 为什么需要：把家人的卡记在自己名下，那笔钱会算进自己的净资产（口径就错了）；
+ * 指定归属后，对方账户会落进账户页的「成员账户」分组，不进我的净资产。
+ * 后端 create 会二次校验「调用者 OWNER/ADMIN + 归属人是本账本成员」，前端这层只是提前收敛选项。
+ */
+const members = ref<BookMember[]>([])
+/** 当前登录用户在该账本的 userId（从成员列表 isMe 那行取） */
+const myUserId = computed(() => members.value.find(m => m.isMe)?.userId ?? null)
+const myRole = computed<MemberRole | null>(() => members.value.find(m => m.isMe)?.role ?? null)
+
+/** 能否为他人建账户：共享账本 + 我是 OWNER/ADMIN */
+const canAssignOwner = computed(() =>
+  book.currentBook?.scope === 'SHARED'
+  && (myRole.value === 'OWNER' || myRole.value === 'ADMIN'),
+)
+
+/** 归属候选：全部成员（label 用昵称，自己的那行加「（我）」） */
+const ownerOptions = computed(() =>
+  members.value.map(m =>
+    emojiOption('👤', `${m.nickname || m.username}${m.isMe ? '（我）' : ''}`, m.userId),
+  ),
+)
+
+/**
+ * 拉当前账本成员（打开新建弹层时调）。
+ * ⚠️ 个人账本没有「他人」，直接清空 —— 别为它白跑一次请求。
+ *    拉失败也清空：**宁可不给选，也不能默认选错归属**。
+ */
+async function loadMembers() {
+  if (book.currentBook?.scope !== 'SHARED') {
+    members.value = []
+    return
+  }
+  try {
+    members.value = await fetchBookMembers(book.currentBookId)
+  }
+  catch {
+    members.value = []
+  }
+}
 
 function openCreate() {
   editingId.value = null
@@ -142,7 +237,10 @@ function openCreate() {
   form.initBalanceYuan = '0'
   form.creditLimitYuan = '0'
   form.isCredit = false
+  form.ownerUserId = null
   formVisible.value = true
+  // 共享账本才需要「归属」：打开时拉一次成员（个人账本内部直接清空，不发请求）
+  void loadMembers()
 }
 
 function openEdit(a: AccountWithBalance) {
@@ -159,17 +257,29 @@ function openEdit(a: AccountWithBalance) {
 
 // 切类型时，若图标仍是上一种类型的默认图标，自动换成新类型的默认图标
 watch(() => form.type, (type, prev) => {
-  if (!form.icon || form.icon === ACCOUNT_TYPE_META[prev]?.icon)
-    form.icon = ACCOUNT_TYPE_META[type].icon
+  // 用带兜底的取值函数：自定义类型没有预设图标，兜底 💰（原来直接下标会拿到 undefined）
+  if (!form.icon || form.icon === accountTypeIcon(prev ?? ''))
+    form.icon = accountTypeIcon(type)
   // 信用卡没有「期初余额」概念：欠款由刷卡的支出流水累积出来，所以建卡时置 0
   if (type === 'credit')
     form.initBalanceYuan = '0'
 })
 
 async function submitForm() {
+  /*
+   * 连点防护：函数入口拦一道。
+   * 按钮上的 `:loading` 只是视觉 + 屏蔽鼠标点击，回车 / 读屏等非鼠标路径不经过它；
+   * 而建账户接口没有幂等键，重复提交会真的建出两个同名账户。
+   */
+  if (submitting.value)
+    return
   const name = form.name.trim()
   if (!name)
     return message.warning('请输入账户名称')
+  // 类型可自定义（tag 模式下允许清空）⇒ 必须校验非空，否则后端 require(type) 会拒
+  const type = String(form.type ?? '').trim()
+  if (!type)
+    return message.warning('请选择或输入账户类型')
 
   const initBalance = parseYuanToCents(form.initBalanceYuan || '0')
   const creditLimit = form.isCredit ? parseYuanToCents(form.creditLimitYuan || '0') : 0
@@ -180,20 +290,26 @@ async function submitForm() {
 
   submitting.value = true
   try {
-    const payload: Omit<Account, 'id'> = {
+    const payload: AccountCreateInput = {
       bookId: book.currentBookId,
       name,
-      type: form.type,
-      icon: form.icon || ACCOUNT_TYPE_META[form.type].icon,
+      type,
+      icon: form.icon || accountTypeIcon(type),
       initBalance,
       creditLimit: form.isCredit ? creditLimit : 0,
     }
+    // 归属：只有「新建 + 明确选了别人」才带（后端还会二次校验权限与成员资格）
+    if (form.ownerUserId && form.ownerUserId !== myUserId.value)
+      payload.ownerUserId = form.ownerUserId
+
     if (editingId.value == null) {
       await accountStore.createAccountEntry(payload)
       message.success('账户已创建')
     }
     else {
-      await accountStore.updateAccountEntry(editingId.value, payload)
+      // ⚠️ 归属建后不可改：编辑时不带 ownerUserId，免得把已有账户搬到别人名下
+      const { ownerUserId: _ignored, ...patch } = payload
+      await accountStore.updateAccountEntry(editingId.value, patch)
       message.success('账户已更新')
     }
     formVisible.value = false
@@ -231,6 +347,9 @@ async function openDelete(a: AccountWithBalance) {
 }
 
 async function confirmDelete() {
+  // 连点防护（删账户会连带迁移/清理流水，重复执行代价高）
+  if (deleting.value)
+    return
   if (!target.value || migrateTo.value == null) {
     message.warning('请选择流水迁移到的账户')
     return
@@ -299,12 +418,12 @@ watch(() => quickEntry.dataChangedAt, (at) => {
     -->
     <section class="net-band" aria-label="账户总览">
       <div class="net-figure">
-        <span class="net-label">净资产</span>
+        <span class="net-label">我的净资产</span>
         <NSkeleton v-if="loading && !accounts.length" text width="70%" :height="30" />
         <span v-else class="net-value" :class="accountStore.netAssets < 0 ? 'is-debt' : ''">
           <AnimatedMoney :cents="accountStore.netAssets" />
         </span>
-        <span class="net-hint">全部账户余额之和，信用卡欠款已扣减</span>
+        <span class="net-hint">只统计你自己的账户；成员账户不计入，信用卡欠款已扣减</span>
       </div>
 
       <span class="net-divider" aria-hidden="true" />
@@ -346,74 +465,83 @@ watch(() => quickEntry.dataChangedAt, (at) => {
     </EmptyState>
 
     <section v-else class="groups">
-      <div v-for="g in groups" :key="g.type" class="group">
-        <header class="group-head" :class="g.total < 0 ? 'is-debt' : ''">
-          <TwemojiIcon class="group-icon" :emoji="g.icon" :size="16" />
-          <span class="group-name">{{ g.label }}</span>
-          <span class="group-count">{{ g.items.length }}</span>
-          <span class="group-total">
-            <AnimatedMoney :cents="g.total" />
-          </span>
+      <div v-for="sec in sections" :key="sec.key" class="owner-block">
+        <header class="owner-head">
+          <span class="owner-name">{{ sec.title }}</span>
+          <span v-if="sec.hint" class="owner-hint">{{ sec.hint }}</span>
         </header>
 
-        <div class="account-grid">
-          <article
-            v-for="a in g.items"
-            :key="a.id"
-            class="account-card"
-            :class="a.balance < 0 ? 'is-debt' : ''"
-          >
-            <div class="card-top">
-              <span class="card-icon">
-                <TwemojiIcon :emoji="a.icon" :size="20" :alt="a.name" />
-              </span>
-              <div class="card-titles">
-                <span class="card-name">{{ a.name }}</span>
-                <span class="card-meta">{{ a.txnCount.toLocaleString('zh-CN') }} 笔流水</span>
-              </div>
-              <div class="card-amount">
-                <span class="card-balance">
-                  <AnimatedMoney :cents="a.balance" />
+        <div v-for="g in sec.groups" :key="`${sec.key}-${g.type}`" class="group">
+          <header class="group-head" :class="g.total < 0 ? 'is-debt' : ''">
+            <TwemojiIcon class="group-icon" :emoji="g.icon" :size="16" />
+            <span class="group-name">{{ g.label }}</span>
+            <span class="group-count">{{ g.items.length }}</span>
+            <span class="group-total">
+              <AnimatedMoney :cents="g.total" />
+            </span>
+          </header>
+
+          <div class="account-grid">
+            <article
+              v-for="a in g.items"
+              :key="a.id"
+              class="account-card"
+              :class="a.balance < 0 ? 'is-debt' : ''"
+            >
+              <div class="card-top">
+                <span class="card-icon">
+                  <TwemojiIcon :emoji="a.icon" :size="20" :alt="a.name" />
                 </span>
-                <span v-if="shareText(a)" class="card-share">{{ shareText(a) }}</span>
+                <div class="card-titles">
+                  <span class="card-name">{{ a.name }}</span>
+                  <span class="card-meta">{{ a.txnCount.toLocaleString('zh-CN') }} 笔流水</span>
+                  <!-- 成员账户（他人账户）：可见，但余额不计入「我的净资产」 -->
+                  <span v-if="a.mine === false" class="card-member">成员账户</span>
+                </div>
+                <div class="card-amount">
+                  <span class="card-balance">
+                    <AnimatedMoney :cents="a.balance" />
+                  </span>
+                  <span v-if="shareText(a)" class="card-share">{{ shareText(a) }}</span>
+                </div>
               </div>
-            </div>
 
-            <!-- 信用卡：额度用了多少比期初余额更有意义 -->
-            <div v-if="usedPercent(a) !== null" class="credit">
-              <div class="credit-head">
-                <span class="credit-label">可用 {{ availableText(a) }}</span>
-                <span class="credit-limit">额度 {{ formatCents(a.creditLimit, { withSymbol: true }) }}</span>
+              <!-- 信用卡：额度用了多少比期初余额更有意义 -->
+              <div v-if="usedPercent(a) !== null" class="credit">
+                <div class="credit-head">
+                  <span class="credit-label">可用 {{ availableText(a) }}</span>
+                  <span class="credit-limit">额度 {{ formatCents(a.creditLimit, { withSymbol: true }) }}</span>
+                </div>
+                <div
+                  class="credit-track"
+                  role="progressbar"
+                  :aria-label="`${a.name} 已用额度 ${Math.round(usedPercent(a) ?? 0)}%`"
+                  :aria-valuenow="Math.round(usedPercent(a) ?? 0)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                >
+                  <span
+                    class="credit-fill"
+                    :class="isHighUsage(a) ? 'is-high' : ''"
+                    :style="{ width: `${usedPercent(a)}%` }"
+                  />
+                </div>
               </div>
-              <div
-                class="credit-track"
-                role="progressbar"
-                :aria-label="`${a.name} 已用额度 ${Math.round(usedPercent(a) ?? 0)}%`"
-                :aria-valuenow="Math.round(usedPercent(a) ?? 0)"
-                aria-valuemin="0"
-                aria-valuemax="100"
-              >
-                <span
-                  class="credit-fill"
-                  :class="isHighUsage(a) ? 'is-high' : ''"
-                  :style="{ width: `${usedPercent(a)}%` }"
-                />
+              <div v-else class="init-row">
+                <span class="init-label">期初余额</span>
+                <span class="init-value">{{ formatCents(a.initBalance, { withSymbol: true }) }}</span>
               </div>
-            </div>
-            <div v-else class="init-row">
-              <span class="init-label">期初余额</span>
-              <span class="init-value">{{ formatCents(a.initBalance, { withSymbol: true }) }}</span>
-            </div>
 
-            <div class="card-actions">
-              <NButton size="small" tertiary @click="openEdit(a)">
-                编辑
-              </NButton>
-              <NButton size="small" tertiary type="error" @click="openDelete(a)">
-                删除
-              </NButton>
-            </div>
-          </article>
+              <div class="card-actions">
+                <NButton size="small" tertiary @click="openEdit(a)">
+                  编辑
+                </NButton>
+                <NButton size="small" tertiary type="error" @click="openDelete(a)">
+                  删除
+                </NButton>
+              </div>
+            </article>
+          </div>
         </div>
       </div>
     </section>
@@ -438,7 +566,35 @@ watch(() => quickEntry.dataChangedAt, (at) => {
 
         <div class="field">
           <span class="field-label">类型</span>
-          <NSelect v-model:value="form.type" :options="typeOptions" :render-label="renderEmojiLabel" />
+          <!--
+            filterable + tag：预设之外**可自由输入**自定义类型名（如「花呗」「公积金」）。
+            自定义类型按普通账户处理（只有预设「信用卡」有额度/欠款语义）。
+          -->
+          <NSelect
+            v-model:value="form.type"
+            :options="typeOptions"
+            :render-label="renderEmojiLabel"
+            filterable
+            tag
+            placeholder="选择或输入自定义类型"
+          />
+          <span class="field-hint">预设里没有的，直接输入新类型名，例如「花呗」「公积金」</span>
+        </div>
+
+        <!--
+          归属（仅共享账本 + 我是 OWNER/ADMIN，且只在**新建**时出现）：
+          默认建给自己；选其他成员即建到他/她名下 —— 该账户会落进账户页的「成员账户」分组、不计入我的净资产。
+          编辑时不给改：把已有账户搬到别人名下是低频高风险操作。
+        -->
+        <div v-if="canAssignOwner && editingId == null" class="field">
+          <span class="field-label">归属</span>
+          <NSelect
+            v-model:value="form.ownerUserId"
+            :options="ownerOptions"
+            :render-label="renderEmojiLabel"
+            placeholder="建给自己"
+          />
+          <span class="field-hint">默认建给自己；选其他成员即建到他/她名下（不算进你的净资产）</span>
         </div>
 
         <div class="field">
@@ -654,6 +810,31 @@ watch(() => quickEntry.dataChangedAt, (at) => {
   gap: var(--lz-space-6);
 }
 
+/* 归属分区（我的账户 / 成员账户）：比类型组头更重一档，形成「分区 → 类型」两级层次 */
+.owner-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lz-space-4);
+}
+
+.owner-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.owner-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lz-text-primary);
+}
+
+/* 成员账户分区的说明（「不计入我的净资产」）：弱化但必须看得见 */
+.owner-hint {
+  font-size: 12px;
+  color: var(--lz-text-disabled);
+}
+
 .group-head {
   display: flex;
   align-items: center;
@@ -772,6 +953,17 @@ watch(() => quickEntry.dataChangedAt, (at) => {
   font-size: 12px;
   color: var(--lz-text-secondary);
   @include tabular;
+}
+
+/* 「成员账户」小标：他人账户 —— 余额可见，但不计入我的净资产 */
+.card-member {
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: var(--lz-radius-sm);
+  font-size: 11px;
+  line-height: 16px;
+  background: var(--lz-border-light);
+  color: var(--lz-text-secondary);
 }
 
 .card-amount {

@@ -66,14 +66,14 @@ function openQuickEntry(): void {
       </div>
 
       <!--
-        资产净值：所有账户余额合计（PRD 8.1）
+        我的净资产：**只算自己的账户**（共享账本里成员账户是他人的钱，不计入）。
         刻意不做成两个带边框的盒子 —— 灰色描边的小卡片会和下面四张数据卡
         抢同一层视觉，反而把「最重要的存量数字」压低了。这里改成纯排版：
         一条竖分隔线划分「当前账本」与「跨账本合计」，靠字号和颜色分主次。
       -->
       <div class="net-block">
         <div class="net-item net-item--primary">
-          <span class="net-label">资产净值</span>
+          <span class="net-label">我的净资产</span>
           <NSkeleton v-if="loading" text width="120px" :height="30" />
           <span v-else class="net-value net-value--primary">
             {{ currentBookNetAssets == null ? '—' : formatCents(currentBookNetAssets, { withSymbol: true }) }}
@@ -82,9 +82,9 @@ function openQuickEntry(): void {
 
         <span class="net-divider" aria-hidden="true" />
 
-        <!-- 总资产净值：跨账本合计，切账本不变化，方便对账 -->
+        <!-- 全部账本合计（同样只算自己的账户）：跨账本汇总，切账本不变化，方便对账 -->
         <div class="net-item">
-          <span class="net-label">总资产净值</span>
+          <span class="net-label">全部账本合计</span>
           <NSkeleton v-if="loading" text width="110px" :height="22" />
           <span v-else class="net-value">
             {{ totalNetAssets == null ? '—' : formatCents(totalNetAssets, { withSymbol: true }) }}

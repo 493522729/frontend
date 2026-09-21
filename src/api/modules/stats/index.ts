@@ -39,7 +39,14 @@ export function listAccountBalances(bookId?: number): Promise<AccountBalance[]> 
 export async function getTotalNetAssets(): Promise<number> {
   const books = await listBooks()
   const balancesList = await Promise.all(books.map(b => listAccountBalances(b.id)))
-  return balancesList.flat().reduce((sum, x) => sum + x.balance, 0)
+  /*
+   * 只算**自己的**账户（mine !== false）：共享账本里成员的账户可见，
+   * 但那是别人的钱，不该进「我的」总资产（转账给对方账户后尤其明显）。
+   * ⚠️ 旧后端不返回 mine ⇒ 全部保留，行为与改动前一致。
+   */
+  return balancesList.flat()
+    .filter(x => x.mine !== false)
+    .reduce((sum, x) => sum + x.balance, 0)
 }
 
 /** 资产趋势（净值走势）—— 真实后端 GET /api/stats/net-worth-trend?bookId=&months= */

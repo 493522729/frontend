@@ -17,7 +17,7 @@ import { initCategories, peekNextCategoryId } from '@/api/modules/category/mock'
  */
 
 /** 账户种子：顺序与 api/mock-books.ts 的 ACCOUNT_TEMPLATE_ORDER 一致（下标即引用方式） */
-const ACCOUNT_TEMPLATES: Omit<Account, 'id' | 'bookId'>[] = [
+const ACCOUNT_TEMPLATES: Omit<Account, 'id' | 'bookId' | 'mine'>[] = [
   { name: '招商储蓄卡', type: 'debit', icon: '🏦', initBalance: 5000000, creditLimit: 0 },
   { name: '支付宝', type: 'alipay', icon: '💙', initBalance: 200000, creditLimit: 0 },
   { name: '微信', type: 'wechat', icon: '💚', initBalance: 100000, creditLimit: 0 },
@@ -43,7 +43,8 @@ export function initAccounts(): void {
     for (const idx of seed.accountTemplateIndexes) {
       const tpl = ACCOUNT_TEMPLATES[idx]
       if (tpl)
-        _accounts.push({ ...tpl, id: id++, bookId: seed.id })
+        // mock 里的账户都视为「自己的」（演示数据没有共享账本成员概念）
+        _accounts.push({ ...tpl, id: id++, bookId: seed.id, mine: true })
     }
   }
   _nextId = id
@@ -66,14 +67,14 @@ export function mockListAccounts(bookId?: number): Account[] {
   return bookId == null ? _accounts : _accounts.filter(a => a.bookId === bookId)
 }
 
-export function mockCreateAccount(input: Omit<Account, 'id'>): Account {
+export function mockCreateAccount(input: Omit<Account, 'id' | 'mine'>): Account {
   initAccounts()
-  const created: Account = { ...input, id: _nextId++ }
+  const created: Account = { ...input, id: _nextId++, mine: true }
   _accounts.push(created)
   return created
 }
 
-export function mockUpdateAccount(id: number, patch: Partial<Omit<Account, 'id'>>): Account {
+export function mockUpdateAccount(id: number, patch: Partial<Omit<Account, 'id' | 'mine'>>): Account {
   initAccounts()
   const idx = _accounts.findIndex(a => a.id === id)
   if (idx < 0)

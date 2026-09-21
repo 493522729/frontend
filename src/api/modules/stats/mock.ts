@@ -263,6 +263,8 @@ export function mockGetAccountBalances(bookId?: number): AccountBalance[] {
       transferIn: s.transferIn,
       transferOut: s.transferOut,
       txnCount: s.txnCount,
+      // mock 没有共享账本成员概念：演示账户一律算「自己的」
+      mine: true,
     }
   })
 }

@@ -74,6 +74,7 @@ describe('recurring/mock', () => {
       amount: 1000,
       categoryId: 8,
       accountId: 19,
+      toAccountId: null,
       note: '自动账单',
       startDate: `${new Date().getFullYear()}-01-01`,
       autoConfirm: true,
@@ -91,6 +92,7 @@ describe('recurring/mock', () => {
       amount: 1000,
       categoryId: 8,
       accountId: 19,
+      toAccountId: null,
       note: '未来账单',
       startDate: nextMonthFirstDay(),
       autoConfirm: false,
@@ -106,6 +108,7 @@ describe('recurring/mock', () => {
       amount: 1000,
       categoryId: 8,
       accountId: 19,
+      toAccountId: null,
       note: '停用账单',
       startDate: `${new Date().getFullYear()}-01-01`,
       autoConfirm: false,
@@ -121,6 +124,7 @@ describe('recurring/mock', () => {
       amount: 1000,
       categoryId: 8,
       accountId: 19,
+      toAccountId: null,
       note: '待删账单',
       startDate: `${new Date().getFullYear()}-01-01`,
       autoConfirm: false,
@@ -138,6 +142,7 @@ describe('recurring/mock', () => {
       amount: 1000,
       categoryId: 8,
       accountId: 19,
+      toAccountId: null,
       note: '覆盖账单',
       startDate: `${new Date().getFullYear()}-01-01`,
       autoConfirm: false,
@@ -156,5 +161,28 @@ describe('recurring/mock', () => {
     expect(txn.categoryId).toBe(13)
     expect(txn.note).toBe('覆盖后备注')
     expect(recurringCount()).toBe(beforeCount + 1)
+  })
+
+  it('转账模板：待确认项带两端账户，确认后写入 transfer 流水', () => {
+    const t = mockCreateTemplate({
+      bookId: 1,
+      type: 'transfer',
+      amount: 500000,
+      categoryId: 0,
+      accountId: 19,
+      toAccountId: 20,
+      note: '每月给家人转账',
+      startDate: `${new Date().getFullYear()}-01-01`,
+      autoConfirm: false,
+      active: true,
+    })
+    const pending = mockGetPendingRecurring(1).find(p => p.templateId === t.id)
+    expect(pending?.toAccountId).toBe(20)
+
+    const txn = mockConfirmRecurring({ bookId: 1, templateId: t.id })
+    expect(txn.type).toBe('transfer')
+    expect(txn.accountId).toBe(19)
+    expect(txn.toAccountId).toBe(20)
+    expect(txn.amount).toBe(500000)
   })
 })
