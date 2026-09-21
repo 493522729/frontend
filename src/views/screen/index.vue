@@ -103,6 +103,9 @@ useEventListener(window, 'resize', fit)
 async function load() {
   loading.value = true
   try {
+    // 持久化的 currentBookId 可能已失效（换账号/账本被删），先确保账本列表
+    // 已加载并兜底校正，再取 ID 发请求 —— 否则会拿脏 bookId 403
+    await book.ensureLoaded()
     const bookId = book.currentBookId ?? undefined
     const [ov, bal, tx] = await Promise.all([
       getDashboardOverview({ bookId }),
