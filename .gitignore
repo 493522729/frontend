@@ -57,3 +57,11 @@ _tmp_*
 !public/**/*.gif
 !public/**/*.webp
 !public/**/*.bmp
+
+# src/assets 下的源码引用资源（如公安备案警徽 beian-police.png）必须入库，否则 Docker 构建报 ENOENT
+!src/assets/**/*.png
+!src/assets/**/*.jpg
+!src/assets/**/*.jpeg
+!src/assets/**/*.gif
+!src/assets/**/*.webp
+!src/assets/**/*.bmp
