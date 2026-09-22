@@ -17,6 +17,7 @@ import { useMessage } from 'naive-ui'
  *   - 倒计时环放在右上角（与 QRPlaceholder 同源，方便集成）
  */
 import { computed, watch } from 'vue'
+import { WECHAT_SCAN_ENABLED } from '@/api/modules/auth'
 import { useAuthStore } from '@/stores/modules/auth'
 import { useScanStatus } from '../composables/useScanStatus'
 import ScanCountdown from './ScanCountdown.vue'
@@ -56,6 +57,14 @@ const scan = useScanStatus({
 /** 后端返回的是真实小程序码（data:image/png;base64…）时直接用 <img> 渲染；否则展示本地小程序码图片 */
 const isRealQr = computed(() => scan.qrValue.value.startsWith('data:image'))
 
+/**
+ * 是否处于「等待后端返回二维码」的加载态：
+ * 真实微信扫码链路（WECHAT_SCAN_ENABLED）下，后端可能尚未返回小程序码
+ * （或压根没有配置小程序登录），此时展示加载占位而非误导性的静态演示码。
+ * mock 模式（本地演示）保留静态演示码以完整演示 4 态状态机。
+ */
+const showQrLoading = WECHAT_SCAN_ENABLED && !isRealQr.value
+
 /** Tab 激活时才创建会话；切走/卸载时销毁，避免账号 Tab 下 hidden 扫码面板自动登录 */
 watch(
   () => props.active,
@@ -80,7 +89,10 @@ async function manualRefresh() {
   <div class="scan-panel">
     <!-- 顶部状态描述 -->
     <p class="scan-hint" :class="{ 'is-active': scan.status.value === 'waiting' }">
-      <span v-if="scan.status.value === 'waiting'">
+      <span v-if="showQrLoading">
+        正在获取登录二维码，请稍候…
+      </span>
+      <span v-else-if="scan.status.value === 'waiting'">
         打开 <b>微信</b> 扫一扫，扫码后请在手机端确认登录
       </span>
       <span v-else-if="scan.status.value === 'scanned'">
@@ -97,10 +109,16 @@ async function manualRefresh() {
     <!-- 二维码区 -->
     <div class="qr-wrap" :class="`is-${scan.status.value}`">
       <img v-if="isRealQr" :src="scan.qrValue.value" class="real-qr" alt="微信扫码登录">
-      <img v-else src="/scan-qr.jpg" class="real-qr" alt="微信扫码登录">
+      <!-- mock/演示模式：保留静态演示码以演示状态机 -->
+      <img v-else-if="!showQrLoading" src="/scan-qr.jpg" class="real-qr" alt="微信扫码登录">
+      <!-- 真实链路但后端尚未返回小程序码：加载占位（此时扫码不可能成功，不能放可扫的假码） -->
+      <div v-else class="qr-loading" aria-live="polite">
+        <n-spin :size="36" />
+        <p>正在获取二维码…</p>
+      </div>
 
-      <!-- 倒计时环（等待态 / 已扫描态 / 确认中态 持续显示；过期态隐藏） -->
-      <div v-if="scan.status.value !== 'expired'" class="countdown-badge">
+      <!-- 倒计时环（等待态 / 已扫描态 / 确认中态 持续显示；过期态与加载态隐藏） -->
+      <div v-if="!showQrLoading && scan.status.value !== 'expired'" class="countdown-badge">
         <ScanCountdown
           :total-seconds="scan.total.value"
           :remaining-seconds="scan.remaining.value"
@@ -108,8 +126,8 @@ async function manualRefresh() {
         />
       </div>
 
-      <!-- 扫描线动画：仅 waiting 时显示 -->
-      <div v-if="scan.status.value === 'waiting'" class="scan-line" aria-hidden="true" />
+      <!-- 扫描线动画：仅 waiting 且有码时显示 -->
+      <div v-if="scan.status.value === 'waiting' && !showQrLoading" class="scan-line" aria-hidden="true" />
 
       <!-- 三种状态蒙层：transition 切换 -->
       <Transition name="scan-overlay" mode="out-in">
@@ -220,6 +238,25 @@ async function manualRefresh() {
   user-select: none;
 }
 
+/** 真实链路下等待后端返回小程序码的加载占位 */
+.qr-loading {
+  width: 188px;
+  height: 188px;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+
+  p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--lz-text-secondary);
+  }
+}
+
 .countdown-badge {
   position: absolute;
   top: 8px;
@@ -288,16 +325,18 @@ async function manualRefresh() {
   font-weight: 500;
 }
 
+/* 蒙层压在黑白二维码图上，且 --lz-success-rgb 只在暗色主题定义（亮色下整条失效变透明，
+   白字直接叠在码上不可读）——这里用固定微信绿实底，不随主题/收支色切换 */
 .overlay-scanned {
-  background: rgb(var(--lz-success-rgb) / 92%);
+  background: rgba(7, 193, 96, 0.94);
   color: #fff;
   backdrop-filter: blur(4px);
-  box-shadow: 0 0 0 4px rgb(var(--lz-success-rgb) / 16%);
+  box-shadow: 0 0 0 4px rgba(7, 193, 96, 0.2);
 
   svg {
     width: 48px;
     height: 48px;
-    color: #67c23a;
+    color: #fff;
   }
 
   p {
@@ -307,7 +346,7 @@ async function manualRefresh() {
 }
 
 .overlay-confirmed {
-  background: linear-gradient(135deg, rgb(var(--lz-success-rgb) / 96%), rgb(var(--lz-primary-rgb) / 92%));
+  background: linear-gradient(135deg, rgba(7, 193, 96, 0.97), rgba(37, 143, 220, 0.95));
   color: #fff;
   font-size: 14px;
 

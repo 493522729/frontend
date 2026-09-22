@@ -62,31 +62,37 @@ function onSwitchToLogin() {
       </section>
 
       <section class="split-right">
-        <div class="form-card">
-          <header class="form-head">
-            <h2 class="form-title">
-              创建账号
-            </h2>
-            <p class="form-sub">
-              注册成功后将自动登录，开始你的记账之旅
-            </p>
-          </header>
+        <div class="form-col">
+          <div class="form-card">
+            <header class="form-head">
+              <h2 class="form-title">
+                创建账号
+              </h2>
+              <p class="form-sub">
+                注册成功后将自动登录，开始你的记账之旅
+              </p>
+            </header>
 
-          <RegisterPanel
-            @success="onRegisterSuccess"
-            @switch-to-login="onSwitchToLogin"
-          />
+            <RegisterPanel
+              @success="onRegisterSuccess"
+              @switch-to-login="onSwitchToLogin"
+            />
 
-          <footer class="form-foot">
-            注册即代表您同意 <a href="#terms" class="foot-link" @click.prevent>《服务条款》</a>
-            和 <a href="#privacy" class="foot-link" @click.prevent>《隐私协议》</a>
-          </footer>
+            <footer class="form-foot">
+              注册即代表您同意 <RouterLink to="/terms" class="foot-link">
+                《服务条款》
+              </RouterLink>
+              和 <RouterLink to="/privacy" class="foot-link">
+                《隐私协议》
+              </RouterLink>
+            </footer>
+          </div>
+
+          <!-- ICP 备案号：未登录态也必须可见（管局核查要求），放注册面板下方、文档流内 -->
+          <IcpFooter class="auth-icp" />
         </div>
       </section>
     </div>
-
-    <!-- ICP 备案号：未登录态也必须可见（管局核查要求） -->
-    <IcpFooter class="auth-icp" />
   </div>
 </template>
 
@@ -104,14 +110,19 @@ function onSwitchToLogin() {
   background: #0d1422;
 }
 
-/* 备案页脚：悬浮在分屏底部，不参与布局（避免把 100vh 撑出滚动条） */
+/* 备案页脚：注册面板正下方、文档流内（不再悬浮，避免遮挡与滚动条） */
+.form-col {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 470px;
+  display: flex;
+  flex-direction: column;
+}
+
 .auth-icp {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  padding: 8px 24px 12px;
+  padding: 4px 0 0;
 }
 
 .theme-toggle {
@@ -176,8 +187,10 @@ function onSwitchToLogin() {
 }
 
 .form-card {
+  /* 显式 border-box：同登录页，防止 content-box 溢出导致与备案页脚中心错位 */
+  box-sizing: border-box;
   width: 100%;
-  max-width: 420px;
+  max-width: 470px;
   padding: 32px;
   border-radius: 20px;
   background: var(--lz-bg-card);
@@ -232,6 +245,31 @@ function onSwitchToLogin() {
 
   &:hover {
     color: var(--lz-primary-700);
+  }
+}
+
+/* 矮视口压缩：注册卡 + 备案页脚要在 100vh 内完整放下 */
+@media (max-height: 760px) {
+  .split-right {
+    padding: 16px 32px;
+  }
+
+  .form-card {
+    padding: 20px;
+  }
+
+  .form-head {
+    margin-bottom: 14px;
+  }
+
+  .form-foot {
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+
+  /* 收紧 Naive 表单为每项预留的校验提示空间（默认 ~24px × 4 项） */
+  .form-card :deep(.n-form-item-feedback-wrapper) {
+    min-height: 0;
   }
 }
 

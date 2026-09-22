@@ -177,10 +177,6 @@ function onKeydown(e: KeyboardEvent) {
         登 录
       </n-button>
     </n-form-item>
-
-    <p class="hint">
-      演示账号：<code class="code-chip">admin</code> / <code class="code-chip">admin</code>（其它账号会报用户名或密码错误）
-    </p>
   </n-form>
 </template>
 
@@ -218,24 +214,6 @@ function onKeydown(e: KeyboardEvent) {
   height: 44px;
   font-weight: 600;
   letter-spacing: 0.05em;
-}
-
-.hint {
-  margin: 16px 0 0;
-  font-size: 12px;
-  color: var(--lz-text-placeholder);
-  text-align: center;
-  line-height: 1.6;
-}
-
-.code-chip {
-  background: var(--lz-bg-page);
-  border: 1px solid var(--lz-border);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: var(--lz-text-regular);
 }
 
 /* 降低输入框背景透明度，同时保证输入文字/placeholder 颜色不被影响。

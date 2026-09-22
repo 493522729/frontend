@@ -250,7 +250,7 @@ async function onChangePwdSubmit() {
           账号安全
         </h2>
         <span class="setting-hint">
-          当前账号：{{ auth.userInfo?.nickname || auth.userInfo?.username || '未登录' }}
+          当前账号：{{ auth.userInfo?.username || auth.userInfo?.nickname || '未登录' }}
         </span>
       </div>
       <NSpace>
