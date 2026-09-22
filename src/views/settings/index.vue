@@ -3,22 +3,26 @@ import type { FormInst, FormRules } from 'naive-ui'
 import type { AmountColorMode, ThemeMode } from '@/types/site-config'
 import { NButton, NForm, NFormItem, NInput, NModal, NRadioButton, NRadioGroup, NSpace, NSwitch, useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref } from 'vue'
+import { userApi } from '@/api/modules/user'
 import { useAppStore } from '@/stores/modules/app'
 import { useAuthStore } from '@/stores/modules/auth'
+import { useSettingsStore } from '@/stores/modules/settings'
 import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 
 /**
  * 设置页（Now 清单 #3，PRD §15.2.1）
  * ====================================================================
- * 全局偏好收口，全部落库到后端 SiteConfig（站点级，单一真相源）：
- *   1. 外观主题（跟随系统 / 浅色 / 深色）
- *   2. 金额配色（收入绿/支出红 ↔ A 股收入红/支出绿）
- *   3. 备案信息
- *   4. 账号安全（修改密码）—— 弹窗走 auth.changePassword
+ * 偏好收口：
+ *   1. 外观主题（跟随系统 / 浅色 / 深色）—— 个人服务端偏好，每用户可改、随账号多端一致
+ *   2. 金额配色（收入绿/支出红 ↔ A 股收入红/支出绿）—— 同上，个人服务端偏好
+ *   3. 备案信息（仅超级管理员可编辑）
+ *   4. 小程序订阅消息（仅超级管理员可见）
+ *   5. 账号安全（修改密码）—— 弹窗走 auth.changePassword
  * 所有改动即时生效、即时落库，无需保存按钮。
  */
 const app = useAppStore()
 const auth = useAuthStore()
+const settings = useSettingsStore()
 const siteConfig = useSiteConfigStore()
 const message = useMessage()
 const themeOptions = [
@@ -33,25 +37,27 @@ const moneyColorOptions = [
 ]
 
 const currentMoneyColorDesc = computed(
-  () => moneyColorOptions.find(o => o.value === (siteConfig.config.amountColorMode ?? 'income-green'))?.desc ?? '',
+  () => moneyColorOptions.find(o => o.value === settings.moneyColorMode)?.desc ?? '',
 )
 
 /**
  * 超级管理员：users.roles（CSV）里含 SUPER_ADMIN。
  * 「备案信息」「小程序订阅消息」是站点级管控配置，普通用户/管理员不展示、后端 PUT 也只放超管。
+ * 主题 / 金额配色是「每用户个人偏好」，任何登录用户都可改（写入自己的账号），不属于站点管控。
  */
 const isSuperAdmin = computed(() => auth.userInfo?.roles?.includes('SUPER_ADMIN') ?? false)
 
 async function onThemeChange(mode: ThemeMode) {
-  // 落库为站点默认，并即时预览
-  await siteConfig.update({ themeMode: mode })
+  const updated = await userApi.updatePreferences({ themeMode: mode })
+  auth.userInfo = updated
   app.setThemeMode(mode)
-  message.success('主题已更新')
+  message.success('主题已更新（随账号多端一致）')
 }
 
 async function onMoneyColorChange(mode: AmountColorMode) {
-  await siteConfig.update({ amountColorMode: mode })
-  message.success('金额配色已更新')
+  const updated = await userApi.updatePreferences({ amountColorMode: mode })
+  auth.userInfo = updated
+  message.success('金额配色已更新（随账号多端一致）')
 }
 
 // ── 改密弹窗 ─────────────────────────────────────────────────────
@@ -223,7 +229,7 @@ async function onChangePwdSubmit() {
         </NRadioButton>
       </NRadioGroup>
       <p class="setting-note">
-        此项为<strong>站点级默认主题</strong>，落库保存。个人在登录页 / 顶栏手动切换后会以本地偏好为准。
+        这是你的<strong>个人偏好</strong>，随账号保存、多端一致（换设备登录仍是这个主题）。清空个人选择后回退到站点默认主题。
       </p>
     </section>
 
@@ -234,13 +240,13 @@ async function onChangePwdSubmit() {
         </h2>
         <span class="setting-hint">{{ currentMoneyColorDesc }}</span>
       </div>
-      <NRadioGroup :value="siteConfig.config.amountColorMode ?? 'income-green'" @update:value="onMoneyColorChange">
+      <NRadioGroup :value="settings.moneyColorMode" @update:value="onMoneyColorChange">
         <NRadioButton v-for="opt in moneyColorOptions" :key="opt.value" :value="opt.value">
           {{ opt.label }}
         </NRadioButton>
       </NRadioGroup>
       <p class="setting-note">
-        无论哪种配色，金额都同时带 <b>+ / −</b> 符号，颜色不是唯一编码（色盲可读，无障碍友好）。
+        无论哪种配色，金额都同时带 <b>+ / −</b> 符号，颜色不是唯一编码（色盲可读，无障碍友好）。这是你的个人偏好，随账号保存、多端一致。
       </p>
     </section>
 

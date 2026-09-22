@@ -1,3 +1,4 @@
+import type { AmountColorMode, ThemeMode } from '@/types/site-config'
 /**
  * 用户相关接口示例 —— 看明白这一个，其它接口照抄即可
  * ====================================================================
@@ -47,6 +48,10 @@ export interface UserInfo {
    * 老版本后端没有这个字段 → 视为未绑定。
    */
   wxBound?: boolean
+  /** 个人外观主题偏好（light/dark/auto）；空=跟随站点默认 */
+  themeMode?: ThemeMode
+  /** 个人金额配色偏好（income-green/income-red）；空=跟随站点默认 */
+  amountColorMode?: AmountColorMode
 }
 
 /** 更新个人资料入参 */
@@ -67,9 +72,19 @@ export interface ChangePasswordParams {
  * 注意：登录/注册/改密/登出已统一收敛到 @/api/modules/auth，
  * 这里只保留资料更新（profile 页在用），避免与 auth 模块重复。
  */
+/** 更新个人外观偏好入参（主题 / 金额配色，任一可省略；传空串表示清除、回退站点默认） */
+export interface UserPreferencesParams {
+  themeMode?: ThemeMode | ''
+  amountColorMode?: AmountColorMode | ''
+}
+
 export const userApi = {
   /** 更新当前登录用户资料（昵称/头像/手机号） */
   updateProfile(params: UpdateProfileParams) {
     return http.put<UserInfo>('/user/profile', params)
+  },
+  /** 更新当前登录用户的个人外观偏好（主题 / 金额配色），普通登录用户即可调用 */
+  updatePreferences(params: UserPreferencesParams) {
+    return http.put<UserInfo>('/user/preferences', params)
   },
 }
