@@ -63,7 +63,7 @@ const isRealQr = computed(() => scan.qrValue.value.startsWith('data:image'))
  * （或压根没有配置小程序登录），此时展示加载占位而非误导性的静态演示码。
  * mock 模式（本地演示）保留静态演示码以完整演示 4 态状态机。
  */
-const showQrLoading = WECHAT_SCAN_ENABLED && !isRealQr.value
+const showQrLoading = computed(() => WECHAT_SCAN_ENABLED && !isRealQr.value)
 
 /** Tab 激活时才创建会话；切走/卸载时销毁，避免账号 Tab 下 hidden 扫码面板自动登录 */
 watch(
@@ -93,7 +93,7 @@ async function manualRefresh() {
         正在获取登录二维码，请稍候…
       </span>
       <span v-else-if="scan.status.value === 'waiting'">
-        打开 <b>微信</b> 扫一扫，扫码后请在手机端确认登录
+        二维码已就绪，打开 <b>微信</b> 扫一扫，扫码后请在手机端确认登录
       </span>
       <span v-else-if="scan.status.value === 'scanned'">
         已扫码，请在 <b>手机上点击确认</b>
