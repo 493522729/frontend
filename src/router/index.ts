@@ -52,6 +52,54 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 服务条款 / 隐私协议：未登录也必须可访问（登录/注册页底部声明跳转目标）
+  {
+    path: '/terms',
+    component: () => import('@/layouts/blank/index.vue'),
+    meta: {
+      title: '服务条款',
+      hidden: true,
+      requiresAuth: false,
+      layout: 'blank',
+    },
+    children: [
+      {
+        path: '',
+        name: 'Terms',
+        component: () => import('@/views/agreement/index.vue'),
+        meta: {
+          title: '服务条款',
+          hidden: true,
+          requiresAuth: false,
+          layout: 'blank',
+        },
+      },
+    ],
+  },
+  {
+    path: '/privacy',
+    component: () => import('@/layouts/blank/index.vue'),
+    meta: {
+      title: '隐私协议',
+      hidden: true,
+      requiresAuth: false,
+      layout: 'blank',
+    },
+    children: [
+      {
+        path: '',
+        name: 'Privacy',
+        component: () => import('@/views/agreement/index.vue'),
+        meta: {
+          title: '隐私协议',
+          hidden: true,
+          requiresAuth: false,
+          layout: 'blank',
+        },
+      },
+    ],
+  },
+
   // 注册页走 BlankLayout（与登录页同一布局，复用品牌区）
   {
     path: '/register',

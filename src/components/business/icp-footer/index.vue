@@ -25,6 +25,9 @@ onMounted(() => {
   <footer v-if="site.config.showFooter" class="icp-footer">
     <p class="icp-line">
       <span v-if="site.config.footerText" class="icp-text">{{ site.config.footerText }}</span>
+    </p>
+    <p class="icp-line">
+      <!-- 第二行：备案信息 -->
       <!-- 公安联网备案：官方金色徽标 + 备案号，链接为带 code 的官方查询页（合规硬要求）；
            排在 ICP 备案号之前（管局核查页脚时公安备案常在前） -->
       <a
@@ -64,7 +67,9 @@ onMounted(() => {
   width: 100%;
   padding: 16px 24px 24px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .icp-line {

@@ -118,15 +118,6 @@ const features: Feature[] = [
         </div>
       </article>
     </section>
-
-    <footer class="brand-foot">
-      <p class="version">
-        v0.1.0 · 练手项目
-      </p>
-      <p class="copyright">
-        © 2026 简账 · Built with WorkBuddy
-      </p>
-    </footer>
   </aside>
 </template>
 
@@ -136,6 +127,9 @@ const features: Feature[] = [
   width: 100%;
   height: 100%;
   min-height: 100vh;
+  /* 显式 border-box：min-height:100vh 必须把 64px 上下 padding 算进去，
+     否则（UnoCSS preflight 缺失、全站 content-box）会撑出 128px 滚动条 */
+  box-sizing: border-box;
   padding: 64px 56px;
   display: flex;
   flex-direction: column;
@@ -355,21 +349,34 @@ const features: Feature[] = [
   letter-spacing: 0.01em;
 }
 
-.brand-foot {
-  position: relative;
-  z-index: 2;
-  margin-top: auto;
-  font-size: 12px;
-  opacity: 0.6;
-  line-height: 1.7;
-
-  p {
-    margin: 0;
+/* 矮视口压缩：品牌区自然高度 ~727px，普通笔记本（视口 600~760px）必溢出滚动条。
+   这里按高度档收紧间距与字号，保证 100vh 内完整放下 */
+@media (max-height: 760px) {
+  .brand-panel {
+    padding: 28px 44px;
   }
-}
 
-.version {
-  font-weight: 500;
+  .brand-head {
+    margin-bottom: 24px;
+  }
+
+  .brand-hero {
+    margin-bottom: 24px;
+  }
+
+  .hero-title {
+    margin: 0 0 14px;
+    font-size: 40px;
+  }
+
+  .hero-subtitle {
+    font-size: 14px;
+  }
+
+  .brand-features {
+    gap: 10px 24px;
+    margin-bottom: 24px;
+  }
 }
 
 @media (max-width: 992px) {

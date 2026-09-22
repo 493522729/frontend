@@ -84,47 +84,53 @@ function onGoRegister() {
           <div class="ambient-blob blob-3" />
         </div>
 
-        <div class="form-card">
-          <header class="form-head">
-            <h2 class="form-title">
-              {{ activeTab === 'account' ? '欢迎回来' : '扫码登录' }}
-            </h2>
-            <p class="form-sub">
-              {{ activeTab === 'account' ? '请使用您的账号继续' : '打开微信扫一扫即可登录' }}
-            </p>
-          </header>
+        <div class="form-col">
+          <div class="form-card">
+            <header class="form-head">
+              <h2 class="form-title">
+                {{ activeTab === 'account' ? '欢迎回来' : '扫码登录' }}
+              </h2>
+              <p class="form-sub">
+                {{ activeTab === 'account' ? '请使用您的账号继续' : '打开微信扫一扫即可登录' }}
+              </p>
+            </header>
 
-          <!-- Naive UI Tabs：主题色统一走 primaryColor（晨雾蓝） -->
-          <n-tabs
-            v-model:value="activeTab"
-            type="segment"
-            animated
-            class="login-tabs"
-          >
-            <n-tab-pane name="account" tab="账号密码">
-              <AccountPanel @success="onLoginSuccess" />
-            </n-tab-pane>
-            <n-tab-pane name="scan" tab="微信扫码" display-directive="show">
-              <ScanPanel :active="activeTab === 'scan'" @success="onLoginSuccess" @switch-tab="activeTab = 'account'" />
-            </n-tab-pane>
-          </n-tabs>
+            <!-- Naive UI Tabs：主题色统一走 primaryColor（晨雾蓝） -->
+            <n-tabs
+              v-model:value="activeTab"
+              type="segment"
+              animated
+              class="login-tabs"
+            >
+              <n-tab-pane name="account" tab="账号密码">
+                <AccountPanel @success="onLoginSuccess" />
+              </n-tab-pane>
+              <n-tab-pane name="scan" tab="微信扫码" display-directive="show">
+                <ScanPanel :active="activeTab === 'scan'" @success="onLoginSuccess" @switch-tab="activeTab = 'account'" />
+              </n-tab-pane>
+            </n-tabs>
 
-          <!-- 底部：服务条款 + 跳转注册 -->
-          <footer class="form-foot">
-            <p class="foot-register">
-              还没有账号？<a class="foot-link" @click.prevent="onGoRegister">立即注册</a>
-            </p>
-            <p class="foot-terms">
-              登录即代表您同意 <a href="#terms" class="foot-link" @click.prevent>《服务条款》</a>
-              和 <a href="#privacy" class="foot-link" @click.prevent>《隐私协议》</a>
-            </p>
-          </footer>
+            <!-- 底部：服务条款 + 跳转注册 -->
+            <footer class="form-foot">
+              <p class="foot-register">
+                还没有账号？<a class="foot-link" @click.prevent="onGoRegister">立即注册</a>
+              </p>
+              <p class="foot-terms">
+                登录即代表您同意 <RouterLink to="/terms" class="foot-link">
+                  《服务条款》
+                </RouterLink>
+                和 <RouterLink to="/privacy" class="foot-link">
+                  《隐私协议》
+                </RouterLink>
+              </p>
+            </footer>
+          </div>
+
+          <!-- ICP 备案号：未登录态也必须可见（管局核查要求），放登录面板下方、文档流内 -->
+          <IcpFooter class="auth-icp" />
         </div>
       </section>
     </div>
-
-    <!-- ICP 备案号：未登录态也必须可见（管局核查要求） -->
-    <IcpFooter class="auth-icp" />
   </div>
 </template>
 
@@ -141,14 +147,20 @@ function onGoRegister() {
   background: #0d1422;
 }
 
-/* 备案页脚：悬浮在分屏底部，不参与布局（避免把 100vh 撑出滚动条） */
+/* 备案页脚：登录面板正下方、文档流内（不再悬浮，避免遮挡与滚动条） */
+.form-col {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  /* 与 .form-card 同宽，保证下方备案页脚与面板中心一致 */
+  max-width: 470px;
+  display: flex;
+  flex-direction: column;
+}
+
 .auth-icp {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  padding: 8px 24px 12px;
+  padding: 4px 0 0;
 }
 
 .theme-toggle {
@@ -263,8 +275,12 @@ function onGoRegister() {
 .form-card {
   position: relative;
   z-index: 1;
+  /* 显式 border-box：无 preflight 时 content-box 会让 420 宽度 + 64px padding 溢出，
+     卡片中心与下方备案页脚中心错位 25px */
+  box-sizing: border-box;
   width: 100%;
-  max-width: 420px;
+  /* 470 = 原 content-box 下 420 宽度 + 64px padding 的视觉宽度，恢复原本面板大小 */
+  max-width: 470px;
   padding: 32px;
   border-radius: 20px;
   background: var(--lz-login-card-bg);
@@ -333,6 +349,30 @@ function onGoRegister() {
 
   &:hover {
     color: var(--lz-primary-700);
+  }
+}
+
+/* 矮视口压缩：表单卡 + 备案页脚要在 100vh 内完整放下（普通笔记本 ~633px 视口） */
+@media (max-height: 760px) {
+  .split-right {
+    padding: 16px 32px;
+  }
+
+  .form-card {
+    padding: 24px;
+  }
+
+  .form-head {
+    margin-bottom: 18px;
+  }
+
+  .login-tabs {
+    margin-bottom: 16px;
+  }
+
+  .form-foot {
+    margin-top: 16px;
+    padding-top: 12px;
   }
 }
 
