@@ -26,6 +26,7 @@ import {
   fetchProfile,
 } from '@/api/modules/auth'
 import { STORAGE_KEYS } from '@/constants/storage-keys'
+import { useAppStore } from '@/stores/modules/app'
 import { useBookStore } from '@/stores/modules/book'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -109,6 +110,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function refreshProfile() {
     try {
       userInfo.value = await fetchProfile()
+      // 登录/刷新后应用个人主题偏好（服务端存储，多端一致）；无则保留本地/站点默认
+      useAppStore().applyUserTheme(userInfo.value?.themeMode)
     }
     catch {
       userInfo.value = null

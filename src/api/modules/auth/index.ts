@@ -199,6 +199,100 @@ export function cancelScanSession(qrId: string): Promise<void> {
   return WECHAT_SCAN_ENABLED ? cancelScanSessionReal(qrId) : cancelScanSessionMock(qrId)
 }
 
+// ── 忘记密码（网页端扫码 / 小程序确认 / 网页端提交新密码）─────────────────
+// 后端接口（已对接真后端）：
+//   POST /api/auth/reset-qr          → 生成重置二维码（免登录）
+//   GET  /api/auth/reset-qr/{qrId}   → 轮询状态
+//   POST /api/auth/reset-confirm      → 凭已确认二维码 + 新密码重置（免登录）
+// 小程序侧负责扫这个码并 confirm（已登录态即身份）。
+// 未配置微信时为前端兜底（mock）流程，便于本地验证 UI。
+
+/** 重置二维码状态 */
+export type ResetStatus = 'waiting' | 'confirmed' | 'expired'
+
+/** 生成重置二维码的返回结构（与后端 ResetQrResult 对齐） */
+export interface ResetQrResult {
+  qrId: string
+  expiresIn: number
+  qrCodeDataUrl: string
+}
+
+/** 轮询接口的返回值 */
+export interface ResetState {
+  status: ResetStatus
+  expiresIn: number
+}
+
+/** 生成重置二维码：真实后端或前端 mock 兜底 */
+export function createResetQr(): Promise<ResetQrResult> {
+  return WECHAT_SCAN_ENABLED ? createResetQrReal() : createResetQrMock()
+}
+
+/** 轮询重置二维码状态 */
+export function pollResetQr(qrId: string): Promise<ResetState> {
+  return WECHAT_SCAN_ENABLED ? pollResetQrReal(qrId) : pollResetQrMock(qrId)
+}
+
+/** 凭已确认的二维码 + 新密码重置密码（真实后端或前端 mock 兜底） */
+export function resetConfirm(qrId: string, newPassword: string): Promise<void> {
+  return WECHAT_SCAN_ENABLED ? resetConfirmReal(qrId, newPassword) : resetConfirmMock(qrId, newPassword)
+}
+
+function resetConfirmReal(qrId: string, newPassword: string): Promise<void> {
+  return http.post<void>('/auth/reset-confirm', { qrId, newPassword })
+}
+
+function resetConfirmMock(_qrId: string, _newPassword: string): Promise<void> {
+  // 本地兜底：mock 会话无真实后端会话，直接模拟重置成功，便于验证「确认 → 成功」UI 闭环
+  return new Promise(resolve => setTimeout(resolve, 300))
+}
+
+// ── 前端 mock 实现（兜底，未配置微信时本地可跑通 UI） ─────────────────────
+
+const mockResets = new Map<string, { status: ResetStatus, createdAt: number }>()
+
+function createResetQrMock(): Promise<ResetQrResult> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const qrId = `r${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      mockResets.set(qrId, { status: 'waiting', createdAt: Date.now() })
+      resolve({ qrId, expiresIn: 900, qrCodeDataUrl: qrId })
+    }, 300)
+  })
+}
+
+function pollResetQrMock(qrId: string): Promise<ResetState> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const s = mockResets.get(qrId)
+      if (!s) {
+        resolve({ status: 'expired', expiresIn: 0 })
+        return
+      }
+      const elapsed = Math.floor((Date.now() - s.createdAt) / 1000)
+      const remaining = Math.max(0, 900 - elapsed)
+      if (elapsed >= 900) {
+        resolve({ status: 'expired', expiresIn: 0 })
+        return
+      }
+      // 兜底：本地无小程序，10s 后自动「确认」，便于演示「扫码 → 输新密码」
+      if (elapsed >= 10 && s.status !== 'confirmed')
+        s.status = 'confirmed'
+      resolve({ status: s.status, expiresIn: remaining })
+    }, 150)
+  })
+}
+
+// ── 真实后端实现（VITE_WECHAT_SCAN_ENABLED=true 时） ───────────────────────
+
+function createResetQrReal(): Promise<ResetQrResult> {
+  return http.post<ResetQrResult>('/auth/reset-qr')
+}
+
+function pollResetQrReal(qrId: string): Promise<ResetState> {
+  return http.get<ResetState>(`/auth/reset-qr/${qrId}`)
+}
+
 // ── 微信绑定（MP-ADR-5：方案 A）────────────────────────────────────────
 // 网页端已登录 → 生成「绑定码」→ 小程序扫 → 把该微信的 openid 绑到当前账号。
 // 与「登录码」的区别：登录码是未登录用户扫（拿登录态），绑定码是已登录用户扫（建绑定关系）。

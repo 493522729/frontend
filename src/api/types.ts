@@ -39,6 +39,8 @@ export const BUSINESS_CODE = {
   UNAUTHORIZED: 40100,
   /** 无权限访问该资源 */
   FORBIDDEN: 40300,
+  /** 入参校验失败 */
+  PARAM_INVALID: 40000,
 } as const
 
 /**

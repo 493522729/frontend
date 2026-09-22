@@ -11,6 +11,7 @@ import { useMessage } from 'naive-ui'
  */
 import { reactive, ref } from 'vue'
 import { ApiError } from '@/api'
+import ForgotPasswordModal from '@/components/ForgotPasswordModal.vue'
 import { useAuthStore } from '@/stores/modules/auth'
 
 const emit = defineEmits<{
@@ -52,6 +53,8 @@ const rules: FormRules = {
 const formRef = ref<FormInst | null>(null)
 const submitting = ref(false)
 const errorMsg = ref('')
+/** 忘记密码弹窗 */
+const showForgot = ref(false)
 
 /**
  * 提交登录：
@@ -161,7 +164,7 @@ function onKeydown(e: KeyboardEvent) {
         <n-checkbox v-model:checked="form.remember">
           记住我（30 天免登录）
         </n-checkbox>
-        <a class="link" href="#forget" @click.prevent>忘记密码？</a>
+        <a class="link" href="#forget" @click.prevent="showForgot = true">忘记密码？</a>
       </div>
     </n-form-item>
 
@@ -178,6 +181,8 @@ function onKeydown(e: KeyboardEvent) {
       </n-button>
     </n-form-item>
   </n-form>
+
+  <ForgotPasswordModal v-model:show="showForgot" />
 </template>
 
 <style scoped lang="scss">

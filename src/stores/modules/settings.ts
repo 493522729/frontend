@@ -1,6 +1,7 @@
 import type { TransactionType } from '@/enums/transaction'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import { computed } from 'vue'
+import { useAuthStore } from '@/stores/modules/auth'
 import { useSiteConfigStore } from '@/stores/modules/siteConfig'
 
 /**
@@ -38,10 +39,17 @@ const TONE_BG_VAR: Record<AmountTone, string> = {
 }
 
 export const useSettingsStore = defineStore('settings', () => {
-  /** 金额配色偏好：默认收入绿/支出红（记账直觉），A 股习惯可切。来源为落库的站点配置 */
-  const moneyColorMode = computed<MoneyColorMode>(
-    () => useSiteConfigStore().config.amountColorMode ?? 'income-green',
-  )
+  /**
+   * 金额配色偏好：个人服务端偏好（UserInfo.amountColorMode）优先，
+   * 没有则回退站点默认（SiteConfig.amountColorMode，仅超管可改），再不行用默认 income-green。
+   * 2026-09-22：从「全局站点配置」改为「每用户服务端偏好」，普通用户即可改、随账号多端一致。
+   */
+  const moneyColorMode = computed<MoneyColorMode>(() => {
+    const pref = useAuthStore().userInfo?.amountColorMode
+    if (pref === 'income-green' || pref === 'income-red')
+      return pref
+    return useSiteConfigStore().config.amountColorMode ?? 'income-green'
+  })
 
   /**
    * 把「逻辑色调」映射成语义颜色（success / danger / neutral）

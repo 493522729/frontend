@@ -52,6 +52,15 @@ export const useAppStore = defineStore('app', () => {
       themeMode.value = mode
   }
 
+  /**
+   * 应用当前登录用户的个人主题偏好（来自 UserInfo.themeMode，服务端存储）。
+   * 有值则直接采用（覆盖本地/站点默认，保证多端一致）；空则不动（保留现有选择/站点默认）。
+   */
+  function applyUserTheme(mode: ThemeMode | null | undefined) {
+    if (mode === 'light' || mode === 'dark' || mode === 'auto')
+      setThemeMode(mode)
+  }
+
   /** 主题切换按钮：当前生效暗色则切到 light，否则切到 dark */
   function toggleDark() {
     setThemeMode(isDark.value ? 'light' : 'dark')
@@ -68,6 +77,7 @@ export const useAppStore = defineStore('app', () => {
     themeMode,
     setThemeMode,
     applySiteTheme,
+    applyUserTheme,
     toggleDark,
     sidebarCollapsed,
     toggleSidebar,
