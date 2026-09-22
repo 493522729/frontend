@@ -45,19 +45,33 @@ export const useBookStore = defineStore('book', () => {
     }
   }
 
-  /** 幂等加载账本列表 */
+  /**
+   * 幂等加载账本列表。
+   * 并发去重必须「共享在途 Promise」而不是 loading 标记早退：
+   * 布局头部 BookSwitcher 与路由页（仪表盘等）几乎同时调这里，
+   * 若后者立即返回，会拿着尚未被 applyFallback 修正的 currentBookId
+   * （reset 后的 mock 默认 id / 上个账号残留 id）去请求数据
+   * → 后端 403「你不是该账本的成员」（2026-09-22 扫码登录后仪表盘误报根因）。
+   */
+  let inflight: Promise<void> | null = null
   async function ensureLoaded(): Promise<void> {
-    if (loaded.value || loading.value)
+    if (loaded.value)
       return
-    loading.value = true
-    try {
-      books.value = await listBooks()
-      applyFallback()
-      loaded.value = true
+    if (!inflight) {
+      inflight = (async () => {
+        loading.value = true
+        try {
+          books.value = await listBooks()
+          applyFallback()
+          loaded.value = true
+        }
+        finally {
+          loading.value = false
+          inflight = null
+        }
+      })()
     }
-    finally {
-      loading.value = false
-    }
+    await inflight
   }
 
   /**
