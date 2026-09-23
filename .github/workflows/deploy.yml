@@ -1,0 +1,35 @@
+# 部署到生产服务器（101.42.28.74 /opt/finance）
+# 原理：本 workflow 只做触发器 —— SSH 到服务器执行 update.sh，
+#       服务器自己从 GitHub 拉本仓库(及另一仓) main 代码并 docker 重建。
+# 前置：仓库 Settings → Secrets → Actions → New repository secret
+#       Name: FINANCE_SSH_KEY   Value: finance-server.pem 的完整内容
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # 允许在 Actions 页面手动点「Run workflow」
+
+# backend / frontend 两个仓库的 workflow 共用同一个并发组：
+# 同时 push 时排队执行，避免两个 update.sh 同时 docker compose 互相打架
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: SSH 触发服务器部署
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 101.42.28.74
+          username: ubuntu
+          key: ${{ secrets.FINANCE_SSH_KEY }}
+          command_timeout: 12m
+          script: |
+            echo "==== 部署触发来源 commit: ${{ github.sha }} ===="
+            cd /opt/finance
+            sudo bash /opt/finance/update.sh
+            sudo docker compose ps
