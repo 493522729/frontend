@@ -251,7 +251,8 @@ function openEdit(a: AccountWithBalance) {
   // 分 → 元：展示时回到用户输入的量纲（(cents/100) 用 toFixed 只影响展示，不进存储）
   form.initBalanceYuan = (a.initBalance / 100).toFixed(2)
   form.creditLimitYuan = (a.creditLimit / 100).toFixed(2)
-  form.isCredit = a.type === 'credit'
+  // 自定义类型名（如「花呗」）建卡时存过额度 ⇒ 编辑时也要把开关点亮，否则额度框消失、期初框误现
+  form.isCredit = a.type === 'credit' || a.creditLimit > 0
   formVisible.value = true
 }
 
@@ -260,8 +261,14 @@ watch(() => form.type, (type, prev) => {
   // 用带兜底的取值函数：自定义类型没有预设图标，兜底 💰（原来直接下标会拿到 undefined）
   if (!form.icon || form.icon === accountTypeIcon(prev ?? ''))
     form.icon = accountTypeIcon(type)
-  // 信用卡没有「期初余额」概念：欠款由刷卡的支出流水累积出来，所以建卡时置 0
+  // 选了内置「信用卡」类型 ⇒ 自动按信用卡对待（显额度、隐期初），避免两个字段脱节
   if (type === 'credit')
+    form.isCredit = true
+})
+
+// 打开「这是信用卡」开关 ⇒ 期初余额随之失效：欠款由刷卡流水累积，不该手填（否则会被当资产统计）
+watch(() => form.isCredit, (v) => {
+  if (v)
     form.initBalanceYuan = '0'
 })
 
@@ -282,7 +289,9 @@ async function submitForm() {
     return message.warning('请选择或输入账户类型')
 
   const initBalance = parseYuanToCents(form.initBalanceYuan || '0')
-  const creditLimit = form.isCredit ? parseYuanToCents(form.creditLimitYuan || '0') : 0
+  // 信用卡判定统一走这一个出口：内置 credit 类型或显式开关（自定义类型名如「花呗」也覆盖）
+  const isCreditCard = form.isCredit || type === 'credit'
+  const creditLimit = isCreditCard ? parseYuanToCents(form.creditLimitYuan || '0') : 0
   if (!Number.isFinite(initBalance) || !Number.isFinite(creditLimit))
     return message.warning('金额格式不正确，最多两位小数')
   if (initBalance < 0 || creditLimit < 0)
@@ -295,8 +304,10 @@ async function submitForm() {
       name,
       type,
       icon: form.icon || accountTypeIcon(type),
-      initBalance,
-      creditLimit: form.isCredit ? creditLimit : 0,
+      // 信用卡强制 0 期初（防御）：欠款只能由刷卡流水累积，
+      // 否则手填的正余额会被净资产口径当成「溢缴款=资产」统计
+      initBalance: isCreditCard ? 0 : initBalance,
+      creditLimit: isCreditCard ? creditLimit : 0,
     }
     // 归属：只有「新建 + 明确选了别人」才带（后端还会二次校验权限与成员资格）
     if (form.ownerUserId && form.ownerUserId !== myUserId.value)
@@ -617,7 +628,7 @@ watch(() => quickEntry.dataChangedAt, (at) => {
           <NInput v-model:value="form.icon" class="icon-input" placeholder="或手动输入任意 emoji" maxlength="4" />
         </div>
 
-        <div v-if="form.type !== 'credit'" class="field">
+        <div v-if="!form.isCredit && form.type !== 'credit'" class="field">
           <label class="field-label" for="acc-init">期初余额</label>
           <NInput
             id="acc-init"
